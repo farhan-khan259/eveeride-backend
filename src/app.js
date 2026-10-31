@@ -984,7 +984,55 @@ app.get(
           { $group: { _id: null, total: { $sum: "$amount" } } },
         ])
       )[0]?.total || 0;
-    const liabilities =
+    const now = new Date(),
+      pakistanNow = new Date(now.getTime() + 5 * 60 * 60 * 1000),
+      pakistanToday = new Date(pakistanNow);
+    pakistanToday.setUTCHours(0, 0, 0, 0);
+    const chartStart = new Date(
+        pakistanToday.getTime() - 6 * 86400000 - 5 * 60 * 60 * 1000,
+      ),
+      groupByPakistanDay = {
+        $dateToString: {
+          format: "%Y-%m-%d",
+          date: "$createdAt",
+          timezone: "Asia/Karachi",
+        },
+      },
+      dailyCount = async (model, match = {}) =>
+        model.aggregate([
+          { $match: { ...match, createdAt: { $gte: chartStart } } },
+          { $group: { _id: groupByPakistanDay, total: { $sum: 1 } } },
+        ]),
+      dailyAmount = async (model, match = {}) =>
+        model.aggregate([
+          { $match: { ...match, createdAt: { $gte: chartStart } } },
+          { $group: { _id: groupByPakistanDay, total: { $sum: "$amount" } } },
+        ]),
+      [registrationRows, depositRows, withdrawalRows] = await Promise.all([
+        dailyCount(M.User),
+        dailyAmount(M.Deposit, { status: "approved" }),
+        dailyAmount(M.Withdrawal, { status: "approved" }),
+      ]),
+      rowMap = (rows) => new Map(rows.map((row) => [row._id, row.total])),
+      registrations = rowMap(registrationRows),
+      deposits = rowMap(depositRows),
+      withdrawals = rowMap(withdrawalRows),
+      activity = Array.from({ length: 7 }, (_, index) => {
+        const day = new Date(pakistanToday.getTime() - (6 - index) * 86400000),
+          date = day.toISOString().slice(0, 10);
+        return {
+          date,
+          label: day.toLocaleDateString("en-PK", {
+            day: "2-digit",
+            month: "short",
+            timeZone: "UTC",
+          }),
+          registrations: registrations.get(date) || 0,
+          deposits: deposits.get(date) || 0,
+          withdrawals: withdrawals.get(date) || 0,
+        };
+      }),
+      liabilities =
       (
         await M.User.aggregate([
           {
@@ -1020,6 +1068,7 @@ app.get(
       commissions: await sum(M.Commission, {}),
       bonuses: await sum(M.Transaction, { category: "salary_bonus" }),
       liabilities,
+      activity,
     });
   }),
 );

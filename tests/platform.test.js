@@ -96,6 +96,47 @@ test("decimal-safe money and Pakistan operating-hour boundaries", () => {
   assert.equal(hoursOpen(new Date("2026-10-31T11:59:59Z")), true);
   assert.equal(hoursOpen(new Date("2026-10-31T12:00:00Z")), false);
 });
+test("admin dashboard charts return seven days of database activity", async () => {
+  const chartUser = await M.User.create({
+    name: "Chart User",
+    username: "chart-user",
+    email: "chart-user@example.test",
+    password: await bcrypt.hash("ChartSecure123", 4),
+    referralCode: "CHARTUSER",
+  });
+  await Promise.all([
+    M.Deposit.create({
+      user: chartUser.id,
+      amount: 125000,
+      method: "EasyPaisa",
+      tid: "CHART-DEPOSIT",
+      status: "approved",
+    }),
+    M.Withdrawal.create({
+      user: chartUser.id,
+      amount: 45000,
+      status: "approved",
+    }),
+  ]);
+  const response = await api(adminToken).get("/admin/dashboard");
+  assert.equal(response.status, 200, response.text);
+  assert.equal(response.body.activity.length, 7);
+  assert.deepEqual(
+    Object.keys(response.body.activity[0]),
+    ["date", "label", "registrations", "deposits", "withdrawals"],
+  );
+  assert.ok(
+    response.body.activity.reduce((sum, day) => sum + day.registrations, 0) >= 1,
+  );
+  assert.equal(
+    response.body.activity.reduce((sum, day) => sum + day.deposits, 0),
+    125000,
+  );
+  assert.equal(
+    response.body.activity.reduce((sum, day) => sum + day.withdrawals, 0),
+    45000,
+  );
+});
 test("registration creates one locked Rs20 bonus and balanced ledger", async () => {
   const r = await request(app).post("/api/auth/register").send(fields());
   assert.equal(r.status, 201, r.text);
