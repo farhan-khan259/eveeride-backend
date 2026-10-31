@@ -942,15 +942,23 @@ app.get(
 );
 app.get(
   "/api/notifications",
-  route(async (req, res) =>
-    res.json(
-      await M.Notification.find({
+  route(async (req, res) => {
+    const notifications = await M.Notification.find({
         $or: [{ user: req.user.id }, { audience: "all" }],
       })
         .sort({ createdAt: -1 })
-        .limit(100),
-    ),
-  ),
+        .limit(100);
+    res.json(
+      notifications.map((notification) => {
+        const item = notification.toObject(),
+          read = notification.readBy.some(
+            (userId) => String(userId) === req.user.id,
+          );
+        delete item.readBy;
+        return { ...item, read };
+      }),
+    );
+  }),
 );
 app.post(
   "/api/notifications/:id/read",

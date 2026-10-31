@@ -229,6 +229,55 @@ test("authenticated password change verifies the old password and rotates the se
     200,
   );
 });
+test("notification unread state is tracked independently for each user", async () => {
+  const [firstUser, secondUser] = await M.User.create([
+      {
+        name: "Notification One",
+        username: "notification-one",
+        email: "notification-one@example.test",
+        password: await bcrypt.hash("NotificationSecure123", 4),
+        referralCode: "NOTICEONE",
+      },
+      {
+        name: "Notification Two",
+        username: "notification-two",
+        email: "notification-two@example.test",
+        password: await bcrypt.hash("NotificationSecure123", 4),
+        referralCode: "NOTICETWO",
+      },
+    ]),
+    firstToken = sign(firstUser),
+    secondNotificationToken = sign(secondUser),
+    [globalNotice, personalNotice] = await M.Notification.create([
+    {
+      title: "For everyone",
+      message: "Global notification",
+      audience: "all",
+    },
+    {
+      user: firstUser.id,
+      title: "For one user",
+      message: "Personal notification",
+      audience: "user",
+    },
+  ]);
+  let r = await api(firstToken).get("/notifications");
+  assert.equal(r.status, 200, r.text);
+  assert.equal(r.body.filter((notice) => !notice.read).length, 2);
+  assert.ok(r.body.every((notice) => notice.readBy === undefined));
+  r = await api(firstToken).post(`/notifications/${globalNotice.id}/read`);
+  assert.equal(r.status, 200, r.text);
+  r = await api(firstToken).get("/notifications");
+  assert.equal(r.body.find((notice) => notice._id === globalNotice.id).read, true);
+  assert.equal(
+    r.body.find((notice) => notice._id === personalNotice.id).read,
+    false,
+  );
+  r = await api(secondNotificationToken).get("/notifications");
+  assert.equal(r.body.length, 1);
+  assert.equal(r.body[0]._id, globalNotice.id);
+  assert.equal(r.body[0].read, false);
+});
 test("non-admin cannot read admin records or another user ledger", async () => {
   assert.equal((await api().get("/admin/users")).status, 403);
   const r = await api().get("/transactions?user=" + admin.id);
