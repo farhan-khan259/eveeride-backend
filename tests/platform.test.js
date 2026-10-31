@@ -331,7 +331,7 @@ test("withdrawal rejection restores the exact reserved funds once", async () => 
   });
   assert.equal(r.status, 409);
 });
-test("withdrawal approval does not mark paid; completion needs external reference", async () => {
+test("withdrawal approval is final and creates an internal payment reference", async () => {
   const r = await api().post("/withdrawals", { amount: "100" }),
     w = { _id: r.body.id };
   assert.equal(r.status, 201, r.text);
@@ -343,29 +343,21 @@ test("withdrawal approval does not mark paid; completion needs external referenc
         paymentRef: "PAY-TEST-1",
       })
     ).status,
-    409,
+    400,
   );
   assert.equal(
     (
       await api(adminToken).post(`/admin/withdrawals/${w._id}/decision`, {
         status: "approved",
-        reason: "Payout account verified",
-      })
-    ).status,
-    200,
-  );
-  assert.equal((await M.User.findById(u.id)).wallet.pending, 10000);
-  assert.equal(
-    (
-      await api(adminToken).post(`/admin/withdrawals/${w._id}/decision`, {
-        status: "completed",
-        reason: "Actual payment test reference",
-        paymentRef: "PAY-TEST-1",
+        reason: "Payout sent and verified",
       })
     ).status,
     200,
   );
   assert.equal((await M.User.findById(u.id)).wallet.pending, 0);
+  const approved = await M.Withdrawal.findById(w._id);
+  assert.equal(approved.status, "approved");
+  assert.equal(approved.paymentRef, `APPROVED-${w._id}`);
 });
 test("task completion enforces server duration and exactly one reward", async () => {
   const task = await M.Task.create({

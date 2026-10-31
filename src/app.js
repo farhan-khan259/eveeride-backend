@@ -615,9 +615,9 @@ app.put(
       ensure(
         !(await M.Withdrawal.exists({
           user: u.id,
-          status: { $in: ["pending", "approved"] },
+          status: "pending",
         }).session(s)),
-        "Cannot change account during a pending withdrawal",
+        "Cannot change the payout account while a withdrawal is pending",
       );
       await M.PayoutAccount.updateOne(
         { user: u.id },
@@ -643,9 +643,9 @@ app.post(
       ensure(
         !(await M.Withdrawal.exists({
           user: u.id,
-          status: { $in: ["pending", "approved"] },
+          status: "pending",
         }).session(s)),
-        "Only one pending withdrawal is allowed",
+        "A withdrawal is already pending. Approve or reject it before creating another.",
       );
       const a = await M.PayoutAccount.findOne({ user: u.id }).session(s);
       ensure(a, "Bind a payout account first");
@@ -738,7 +738,7 @@ app.get(
       }),
       withdrawals: await sum(M.Withdrawal, {
         user: { $in: ids },
-        status: "completed",
+        status: "approved",
       }),
       revenue: await sum(M.Revenue, { user: { $in: ids } }),
       earnings: await sum(M.Transaction, {
@@ -970,9 +970,9 @@ app.get(
       pendingDeposits: await M.Deposit.countDocuments({ status: "pending" }),
       approvedDeposits: await sum(M.Deposit, { status: "approved" }),
       pendingWithdrawals: await M.Withdrawal.countDocuments({
-        status: { $in: ["pending", "approved"] },
+        status: "pending",
       }),
-      completedWithdrawals: await sum(M.Withdrawal, { status: "completed" }),
+      approvedWithdrawals: await sum(M.Withdrawal, { status: "approved" }),
       taskRewards: await sum(M.Transaction, { category: "task_earning" }),
       commissions: await sum(M.Commission, {}),
       bonuses: await sum(M.Transaction, { category: "salary_bonus" }),
@@ -1186,23 +1186,14 @@ app.get(
 app.post(
   "/api/admin/withdrawals/:id/decision",
   route(async (req, res) => {
-    const status = z
-        .enum(["approved", "rejected", "completed"])
-        .parse(req.body.status),
+    const status = z.enum(["approved", "rejected"]).parse(req.body.status),
       reason = text(req.body.reason, 5);
     res.json(
       await atomic(async (s) => {
         const w = await M.Withdrawal.findById(id(req.params.id)).session(s);
-        ensure(
-          w &&
-            ((w.status === "pending" && status !== "completed") ||
-              (w.status === "approved" &&
-                ["completed", "rejected"].includes(status))),
-          "Invalid withdrawal transition",
-          409,
-        );
-        if (status === "completed") {
-          w.paymentRef = text(req.body.paymentRef, 6, 100);
+        ensure(w?.status === "pending", "Withdrawal has already been processed", 409);
+        if (status === "approved") {
+          w.paymentRef = `APPROVED-${w.id}`;
           await M.User.updateOne(
             { _id: w.user },
             { $inc: { "wallet.pending": -w.amount } },
@@ -1213,7 +1204,7 @@ app.post(
             `payout:${w.id}`,
             "withdrawal",
             -w.amount,
-            "Payout completed",
+            "Withdrawal approved and paid",
             [
               { account: `${w.user}:pending`, amount: -w.amount },
               { account: "payoutClearing", amount: w.amount },

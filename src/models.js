@@ -124,7 +124,7 @@ export const Withdrawal = model(
     amount: minor,
     status: {
       type: String,
-      enum: ["pending", "approved", "completed", "rejected"],
+      enum: ["pending", "approved", "rejected"],
       default: "pending",
     },
     account: Object,
@@ -139,7 +139,8 @@ export const Withdrawal = model(
       { user: 1 },
       {
         unique: true,
-        partialFilterExpression: { status: { $in: ["pending", "approved"] } },
+        name: "onePendingWithdrawalPerUser",
+        partialFilterExpression: { status: "pending" },
       },
     ],
     [
