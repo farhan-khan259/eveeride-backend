@@ -287,6 +287,41 @@ app.get(
   route(async (req, res) => res.json(publicUser(req.user))),
 );
 app.post(
+  "/api/account/password",
+  loginLimit,
+  route(async (req, res) => {
+    const body = z
+      .object({
+        currentPassword: z.string().min(1).max(100),
+        newPassword: password,
+        confirmPassword: z.string().min(1).max(100),
+      })
+      .parse(req.body);
+    ensure(
+      body.newPassword === body.confirmPassword,
+      "New password confirmation does not match",
+    );
+    const u = await M.User.findById(req.user.id).select("+password");
+    ensure(
+      await bcrypt.compare(body.currentPassword, u.password),
+      "Current password is incorrect",
+      403,
+    );
+    ensure(
+      !(await bcrypt.compare(body.newPassword, u.password)),
+      "New password must be different from the current password",
+    );
+    u.password = await bcrypt.hash(body.newPassword, 12);
+    u.sessionVersion++;
+    await u.save();
+    res.json({
+      message: "Password updated successfully",
+      token: sign(u),
+      user: publicUser(u),
+    });
+  }),
+);
+app.post(
   "/api/auth/logout",
   route(async (req, res) => {
     await M.User.updateOne(
