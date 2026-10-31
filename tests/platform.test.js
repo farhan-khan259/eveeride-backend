@@ -180,6 +180,55 @@ test("password reset is generic, hashed, single-use and revokes sessions", async
     400,
   );
 });
+test("authenticated password change verifies the old password and rotates the session", async () => {
+  const account = await M.User.create({
+      name: "Password Test",
+      username: "password-test",
+      email: "password-change@example.test",
+      password: await bcrypt.hash("OriginalSecure123", 4),
+      referralCode: "PASSWORDTEST",
+    }),
+    oldToken = sign(account);
+  let r = await api(oldToken).post("/account/password", {
+    currentPassword: "incorrect",
+    newPassword: "UpdatedSecure123",
+    confirmPassword: "UpdatedSecure123",
+  });
+  assert.equal(r.status, 403, r.text);
+  r = await api(oldToken).post("/account/password", {
+    currentPassword: "OriginalSecure123",
+    newPassword: "UpdatedSecure123",
+    confirmPassword: "DoesNotMatch123",
+  });
+  assert.equal(r.status, 400, r.text);
+  r = await api(oldToken).post("/account/password", {
+    currentPassword: "OriginalSecure123",
+    newPassword: "UpdatedSecure123",
+    confirmPassword: "UpdatedSecure123",
+  });
+  assert.equal(r.status, 200, r.text);
+  assert.ok(r.body.token);
+  assert.equal((await api(oldToken).get("/me")).status, 401);
+  assert.equal((await api(r.body.token).get("/me")).status, 200);
+  assert.equal(
+    (
+      await request(app).post("/api/auth/login").send({
+        email: account.email,
+        password: "OriginalSecure123",
+      })
+    ).status,
+    401,
+  );
+  assert.equal(
+    (
+      await request(app).post("/api/auth/login").send({
+        email: account.email,
+        password: "UpdatedSecure123",
+      })
+    ).status,
+    200,
+  );
+});
 test("non-admin cannot read admin records or another user ledger", async () => {
   assert.equal((await api().get("/admin/users")).status, 403);
   const r = await api().get("/transactions?user=" + admin.id);
