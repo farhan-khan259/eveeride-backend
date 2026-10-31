@@ -9,6 +9,22 @@ export function sign(user) {
     audience: "tron-client",
   });
 }
+export function signImpersonation(user, admin, session) {
+  return jwt.sign(
+    {
+      sub: user.id,
+      version: user.sessionVersion,
+      impersonatedBy: admin.id,
+      supportSession: session.id,
+    },
+    cfg.secret,
+    {
+      expiresIn: "15m",
+      issuer: "tron-api",
+      audience: "tron-client",
+    },
+  );
+}
 export async function auth(req, res, next) {
   try {
     const raw = req.headers.authorization?.replace(/^Bearer /, "");
@@ -29,7 +45,30 @@ export async function auth(req, res, next) {
       401,
     );
     ensure(u.status === "active", "Account suspended", 403);
+    if (token.supportSession) {
+      const support = await SupportSession.findOne({
+        _id: token.supportSession,
+        admin: token.impersonatedBy,
+        user: u.id,
+        ended: null,
+        expires: { $gt: new Date() },
+      });
+      ensure(support, "Administrative access ended or expired", 401);
+      req.impersonation = support;
+    }
     req.user = u;
+    next();
+  } catch (e) {
+    next(e);
+  }
+}
+export function readOnlyImpersonation(req, _res, next) {
+  try {
+    ensure(
+      !req.impersonation || ["GET", "HEAD", "OPTIONS"].includes(req.method),
+      "Administrative account access is read-only",
+      403,
+    );
     next();
   } catch (e) {
     next(e);

@@ -20,7 +20,16 @@ import {
   dayKey,
 } from "./config.js";
 import * as M from "./models.js";
-import { auth, admin, sign, seal, unseal, hash } from "./security.js";
+import {
+  auth,
+  admin,
+  sign,
+  signImpersonation,
+  readOnlyImpersonation,
+  seal,
+  unseal,
+  hash,
+} from "./security.js";
 import {
   atomic,
   config,
@@ -272,6 +281,7 @@ app.post(
   }),
 );
 app.use("/api", auth);
+app.use("/api", readOnlyImpersonation);
 app.get(
   "/api/me",
   route(async (req, res) => res.json(publicUser(req.user))),
@@ -1487,6 +1497,44 @@ app.post(
         ),
       ),
   ),
+);
+app.post(
+  "/api/admin/users/:id/impersonate",
+  route(async (req, res) => {
+    const target = await M.User.findById(id(req.params.id));
+    ensure(target && target.role === "user", "User account not found", 404);
+    ensure(target.status === "active", "Only active users can be accessed", 409);
+    const support = await atomic(async (s) => {
+      const [session] = await M.SupportSession.create(
+        [
+          {
+            admin: req.user.id,
+            user: target.id,
+            reason: "Admin user-account access",
+            expires: new Date(Date.now() + 15 * 60000),
+          },
+        ],
+        { session: s },
+      );
+      await audit(
+        req.user.id,
+        target.id,
+        "impersonation_start",
+        "Admin user-account access",
+        null,
+        null,
+        session.id,
+        s,
+      );
+      return session;
+    });
+    res.json({
+      token: signImpersonation(target, req.user, support),
+      user: publicUser(target),
+      expires: support.expires,
+      readOnly: true,
+    });
+  }),
 );
 app.post(
   "/api/admin/support-sessions",

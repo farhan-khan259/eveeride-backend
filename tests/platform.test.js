@@ -516,6 +516,30 @@ test("audited support session is scoped read-only and explicitly terminates", as
   );
   assert.equal(await M.AdminAuditLog.countDocuments({ reference: id }), 3);
 });
+test("admin impersonation logs in read-only without exposing user credentials", async () => {
+  const r = await api(adminToken).post(`/admin/users/${u.id}/impersonate`, {});
+  assert.equal(r.status, 200, r.text);
+  assert.equal(r.body.user.id, u.id);
+  assert.equal(r.body.readOnly, true);
+  assert.ok(r.body.token);
+  assert.equal((await api(r.body.token).get("/dashboard")).status, 200);
+  assert.equal(
+    (
+      await api(r.body.token).post("/plans/purchase", {
+        requestId: crypto.randomUUID(),
+      })
+    ).status,
+    403,
+  );
+  assert.equal(
+    await M.AdminAuditLog.countDocuments({
+      admin: admin.id,
+      target: u.id,
+      action: "impersonation_start",
+    }),
+    1,
+  );
+});
 test("suspension revokes user sessions and retains financial history", async () => {
   const n = await M.Transaction.countDocuments({ user: u.id });
   const r = await api(adminToken).post(`/admin/users/${u.id}/status`, {
