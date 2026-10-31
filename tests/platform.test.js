@@ -309,6 +309,11 @@ test("withdrawals enforce minimum and reserve only one pending amount", async ()
   const saved = await M.User.findById(u.id);
   assert.equal(saved.wallet.pending, 10000);
   assert.equal(saved.wallet.deposit, 37000);
+  const adminView = await api(adminToken).get("/admin/withdrawals");
+  assert.equal(adminView.status, 200, adminView.text);
+  assert.equal(adminView.body[0].account.holder, "Test User");
+  assert.equal(adminView.body[0].account.type, "EasyPaisa");
+  assert.equal(adminView.body[0].account.number, "03000000000");
 });
 test("withdrawal rejection restores the exact reserved funds once", async () => {
   const w = await M.Withdrawal.findOne({ user: u.id, status: "pending" });
