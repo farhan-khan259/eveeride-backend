@@ -180,6 +180,26 @@ test("invalid referral code fails and valid referral creates ancestors", async (
   secondToken = r.body.token;
   assert.equal(String(second.ancestors[0]), u.id);
 });
+test("team members include each member's approved deposit total", async () => {
+  await M.Deposit.create({
+    user: second.id,
+    amount: 12345,
+    method: "EasyPaisa",
+    tid: "TEAM-MEMBER-DEPOSIT",
+    status: "approved",
+  });
+  await M.Deposit.create({
+    user: second.id,
+    amount: 5000,
+    method: "EasyPaisa",
+    tid: "TEAM-MEMBER-PENDING",
+    status: "pending",
+  });
+  const r = await api().get("/team");
+  assert.equal(r.status, 200, r.text);
+  const member = r.body.members.find((x) => x.name === second.name);
+  assert.equal(member.deposits, 12345);
+});
 test("login validates password and hashes are never returned", async () => {
   let r = await request(app)
     .post("/api/auth/login")

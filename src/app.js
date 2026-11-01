@@ -768,12 +768,20 @@ app.get(
             { $match: match },
             { $group: { _id: null, total: { $sum: "$amount" } } },
           ])
-        )[0]?.total || 0;
+        )[0]?.total || 0,
+      memberDepositRows = await M.Deposit.aggregate([
+        { $match: { user: { $in: ids }, status: "approved" } },
+        { $group: { _id: "$user", total: { $sum: "$amount" } } },
+      ]),
+      memberDeposits = new Map(
+        memberDepositRows.map((x) => [String(x._id), x.total]),
+      );
     res.json({
       members: members.map((x) => ({
         name: x.name,
         level: x.ancestors.findIndex((a) => a.equals(req.user._id)) + 1,
         joined: x.createdAt,
+        deposits: memberDeposits.get(String(x._id)) || 0,
       })),
       levels: [0, 1, 2, 3].map(
         (i) =>
