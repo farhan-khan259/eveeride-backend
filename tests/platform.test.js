@@ -647,6 +647,35 @@ test("manual adjustments are funded, idempotent, nonnegative and audited", async
   });
   assert.equal(r.status, 409);
 });
+test("account deletion is protected, requires zero balance and preserves audit history", async () => {
+  const deletable = await M.User.create({
+    name: "Delete Test",
+    username: "delete-test",
+    email: "delete-test@example.test",
+    password: await bcrypt.hash("DeleteSecure123", 4),
+    referralCode: "DELETETEST",
+  });
+  let r = await request(app)
+    .delete(`/api/admin/users/${deletable.id}`)
+    .auth(adminToken, { type: "bearer" })
+    .send({ confirmation: "DELETE", reason: "Requested test deletion" });
+  assert.equal(r.status, 200, r.text);
+  const deleted = await M.User.findById(deletable.id);
+  assert.equal(deleted.status, "deleted");
+  assert.match(deleted.email, /@deleted\.invalid$/);
+  assert.equal(
+    await M.AdminAuditLog.countDocuments({
+      target: deletable.id,
+      action: "account_deleted",
+    }),
+    1,
+  );
+  r = await request(app)
+    .delete(`/api/admin/users/${admin.id}`)
+    .auth(adminToken, { type: "bearer" })
+    .send({ confirmation: "DELETE", reason: "Must never delete admin" });
+  assert.equal(r.status, 400);
+});
 test("all financial ledger events balance and cannot be updated", async () => {
   for (const t of await M.Transaction.find())
     assert.equal(

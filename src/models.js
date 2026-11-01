@@ -37,7 +37,11 @@ export const User = model("User", {
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true, select: false },
   role: { type: String, enum: ["user", "admin"], default: "user" },
-  status: { type: String, enum: ["active", "suspended"], default: "active" },
+  status: {
+    type: String,
+    enum: ["active", "suspended", "deleted"],
+    default: "active",
+  },
   referralCode: { type: String, unique: true },
   referrer: ref("User"),
   ancestors: [id],

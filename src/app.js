@@ -1209,6 +1209,62 @@ app.post(
     res.json({ message: "Adjustment recorded" });
   }),
 );
+app.delete(
+  "/api/admin/users/:id",
+  route(async (req, res) => {
+    const reason = text(req.body.reason, 5),
+      confirmation = z.literal("DELETE").parse(req.body.confirmation);
+    await atomic(async (s) => {
+      const u = await M.User.findById(id(req.params.id)).session(s);
+      ensure(u && u.role !== "admin", "Cannot delete this account");
+      ensure(u.status !== "deleted", "Account is already deleted", 409);
+      const balance = Object.values(u.wallet || {}).reduce(
+        (total, amount) => total + (amount || 0),
+        0,
+      );
+      ensure(balance === 0, "Remove the account balance before deletion", 409);
+      ensure(
+        !(await M.Deposit.exists({
+          user: u.id,
+          status: { $in: ["awaiting", "pending"] },
+        }).session(s)) &&
+          !(await M.Withdrawal.exists({
+            user: u.id,
+            status: "pending",
+          }).session(s)),
+        "Resolve open payment requests before deletion",
+        409,
+      );
+      const before = {
+        name: u.name,
+        username: u.username,
+        email: u.email,
+        status: u.status,
+      };
+      u.name = "Deleted member";
+      u.username = `deleted-${u.id}`;
+      u.email = `deleted-${u.id}@deleted.invalid`;
+      u.referralCode = `DELETED-${u.id}`;
+      u.status = "deleted";
+      u.sessionVersion++;
+      u.resetHash = undefined;
+      u.resetExpires = undefined;
+      await u.save({ session: s });
+      await M.PayoutAccount.deleteOne({ user: u.id }).session(s);
+      await audit(
+        req.user.id,
+        u.id,
+        "account_deleted",
+        reason,
+        before,
+        { status: "deleted" },
+        confirmation,
+        s,
+      );
+    });
+    res.json({ message: "Account deleted and identifying data removed" });
+  }),
+);
 app.get(
   "/api/admin/deposits",
   route(async (_req, res) =>
