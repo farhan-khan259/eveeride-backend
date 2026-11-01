@@ -51,6 +51,8 @@ export const User = model("User", {
   sessionVersion: { type: Number, default: 0 },
   resetHash: { type: String, select: false },
   resetExpires: Date,
+  avatar: String,
+  avatarMime: String,
 });
 export const PlanPurchase = model(
   "PlanPurchase",

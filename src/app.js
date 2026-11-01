@@ -98,7 +98,7 @@ async function validateFile(file, video = false) {
       (b.subarray(0, 4).toString() === "RIFF" &&
         b.subarray(8, 12).toString() === "WEBP");
   ensure(ok, "File content does not match an allowed format");
-  ensure(video || b.length <= 5 * 1024 * 1024, "Screenshot must be under 5 MB");
+  ensure(video || b.length <= 5 * 1024 * 1024, "Image must be under 5 MB");
 }
 app.get("/api/health", (_req, res) =>
   res.json({
@@ -208,6 +208,7 @@ function publicUser(u) {
     referralCode: u.referralCode,
     wallet: u.wallet,
     purchases: u.purchases,
+    avatarVersion: u.avatar ? u.updatedAt : null,
   };
 }
 app.post(
@@ -285,6 +286,35 @@ app.use("/api", readOnlyImpersonation);
 app.get(
   "/api/me",
   route(async (req, res) => res.json(publicUser(req.user))),
+);
+app.get(
+  "/api/account/avatar",
+  route(async (req, res) => {
+    const u = await M.User.findById(req.user.id).select("avatar avatarMime");
+    ensure(u?.avatar, "Profile picture not found", 404);
+    res.set("Cache-Control", "private, no-store");
+    res.type(u.avatarMime || "application/octet-stream");
+    res.sendFile(path.resolve(uploadDir, u.avatar));
+  }),
+);
+app.post(
+  "/api/account/avatar",
+  upload.single("avatar"),
+  route(async (req, res) => {
+    await validateFile(req.file);
+    const u = await M.User.findById(req.user.id);
+    ensure(u, "User not found", 404);
+    const previous = u.avatar;
+    u.avatar = req.file.filename;
+    u.avatarMime = req.file.mimetype;
+    await u.save();
+    if (previous && previous !== u.avatar)
+      await fs.unlink(path.resolve(uploadDir, previous)).catch(() => {});
+    res.json({
+      message: previous ? "Profile picture updated" : "Profile picture added",
+      user: publicUser(u),
+    });
+  }),
 );
 app.post(
   "/api/account/password",
