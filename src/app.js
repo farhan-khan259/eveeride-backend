@@ -385,31 +385,42 @@ app.get(
         start: { $lte: now },
       }),
       tasks = await M.Task.find({ active: true });
+    const assignments = [];
     for (let i = 0; tasks.length && i < plans.length; i++) {
-      const p = plans[i];
-      await M.TaskAssignment.updateOne(
-        { purchase: p.id, day: dayKey() },
-        {
-          $setOnInsert: {
-            user: req.user.id,
-            purchase: p.id,
-            task: tasks[i % tasks.length]._id,
-            day: dayKey(),
-            expires: new Date(Math.min(+p.expires, Date.now() + 86400000)),
-            reward: p.reward,
+      const p = plans[i],
+        latest = await M.TaskAssignment.findOne({ purchase: p.id }).sort({
+          createdAt: -1,
+        }),
+        eligibleAt = latest?.expires,
+        eligible = !latest || !eligibleAt || eligibleAt <= now;
+      if (eligible) {
+        await M.TaskAssignment.updateOne(
+          { purchase: p.id, day: dayKey() },
+          {
+            $setOnInsert: {
+              user: req.user.id,
+              purchase: p.id,
+              task: tasks[i % tasks.length]._id,
+              day: dayKey(),
+              expires: new Date(Math.min(+p.expires, +now + 86400000)),
+              reward: p.reward,
+            },
           },
-        },
-        { upsert: true },
-      ).catch((e) => {
-        if (e.code !== 11000) throw e;
-      });
+          { upsert: true },
+        ).catch((e) => {
+          if (e.code !== 11000) throw e;
+        });
+        assignments.push(
+          await M.TaskAssignment.findOne({
+            purchase: p.id,
+            day: dayKey(),
+          }).populate("task"),
+        );
+      } else {
+        assignments.push(await latest.populate("task"));
+      }
     }
-    res.json(
-      await M.TaskAssignment.find({
-        user: req.user.id,
-        day: dayKey(),
-      }).populate("task"),
-    );
+    res.json(assignments.filter(Boolean));
   }),
 );
 app.post(
@@ -422,7 +433,6 @@ app.post(
     ensure(
       t &&
         !t.completed &&
-        t.day === dayKey() &&
         t.expires > new Date() &&
         t.purchase.expires > new Date(),
       "Task is completed or expired",
@@ -452,7 +462,6 @@ app.post(
         );
         ensure(
           t.started &&
-            t.day === dayKey() &&
             t.expires > new Date() &&
             t.purchase.expires > new Date(),
           "Task is expired or has not started",
@@ -467,6 +476,9 @@ app.post(
           503,
         );
         t.completed = new Date();
+        t.expires = new Date(
+          Math.min(+t.purchase.expires, +t.completed + 86400000),
+        );
         await t.save({ session: s });
         await award(
           req.user.id,
@@ -1535,7 +1547,7 @@ app.post(
     await validateFile(req.file, true);
     const duration = z
         .number()
-        .min(10)
+        .min(5)
         .max(900)
         .parse(Number(req.body.duration)),
       title = text(req.body.title, 3, 100);

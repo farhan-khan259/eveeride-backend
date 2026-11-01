@@ -501,7 +501,7 @@ test("withdrawal approval is final and creates an internal payment reference", a
 test("task completion enforces server duration and exactly one reward", async () => {
   const task = await M.Task.create({
     title: "Internal sponsored test",
-    duration: 10,
+    duration: 5,
     file: "test.mp4",
   });
   let r = await api().get("/tasks");
@@ -513,7 +513,7 @@ test("task completion enforces server duration and exactly one reward", async ()
   assert.equal((await api().post(`/tasks/${id}/complete`, {})).status, 400);
   await M.TaskAssignment.updateOne(
     { _id: id },
-    { $set: { started: new Date(Date.now() - 11000) } },
+    { $set: { started: new Date(Date.now() - 6000) } },
   );
   const result = await Promise.all([
     api().post(`/tasks/${id}/complete`, {}),
@@ -522,6 +522,13 @@ test("task completion enforces server duration and exactly one reward", async ()
   assert.deepEqual(result.map((x) => x.status).sort(), [200, 409]);
   assert.equal(await M.Transaction.countDocuments({ key: `task:${id}` }), 1);
   assert.equal((await M.User.findById(u.id)).wallet.earned, 4250);
+  r = await api().get("/tasks");
+  const completed = r.body.find((task) => task._id === id);
+  assert.ok(completed.completed);
+  assert.equal(
+    Date.parse(completed.expires) - Date.parse(completed.completed),
+    86400000,
+  );
 });
 test("expired plans do not generate new assignments or allow completion", async () => {
   const p = await M.PlanPurchase.findOne({ user: u.id });

@@ -75,7 +75,7 @@ export const Task = model("Task", {
   title: String,
   file: String,
   mime: String,
-  duration: { type: Number, min: 10, max: 900 },
+  duration: { type: Number, min: 5, max: 900 },
   active: { type: Boolean, default: true },
 });
 export const TaskAssignment = model(
