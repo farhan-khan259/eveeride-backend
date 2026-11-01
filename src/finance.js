@@ -112,6 +112,83 @@ export async function activePlan(user, session, now = new Date()) {
     expires: { $gt: now },
   }).session(session);
 }
+const qualifiedSalaryLevels = (total) =>
+  LEVELS.flatMap(([target], index) => (total >= target ? [index + 1] : []));
+export async function ensureSalaryCycle(user, session, now = new Date()) {
+  let cycle = await M.SalaryCycle.findOne({ user, current: true }).session(
+    session,
+  );
+  if (cycle && cycle.endsAt > now) return cycle;
+  if (cycle) {
+    await M.SalaryCycle.updateOne(
+      { _id: cycle.id, current: true },
+      { $set: { current: false } },
+      { session },
+    );
+  }
+  const hasPreviousCycle = await M.SalaryCycle.exists({ user }).session(
+      session,
+    ),
+    members = hasPreviousCycle
+      ? []
+      : await M.User.find({ ancestors: user }).select("_id").session(session),
+    lastClaim = hasPreviousCycle
+      ? null
+      : await M.Transaction.findOne({ user, category: "salary_bonus" })
+          .sort({ createdAt: -1 })
+          .session(session),
+    legacyLevels = hasPreviousCycle
+      ? []
+      : await M.SalaryBonus.find({ user, claimedAt: null })
+          .select("level")
+          .session(session),
+    historicalTotal = hasPreviousCycle
+      ? 0
+      : (
+          await M.Deposit.aggregate([
+            {
+              $match: {
+                user: { $in: members.map((member) => member._id) },
+                status: "approved",
+                ...(lastClaim
+                  ? { createdAt: { $gt: lastClaim.createdAt } }
+                  : {}),
+              },
+            },
+            { $group: { _id: null, total: { $sum: "$amount" } } },
+          ]).session(session)
+        )[0]?.total || 0,
+    legacyTarget = Math.max(
+      0,
+      ...legacyLevels.map((item) => LEVELS[item.level - 1]?.[0] || 0),
+    ),
+    openingTotal = Math.max(historicalTotal, legacyTarget);
+  const [created] = await M.SalaryCycle.create(
+    [
+      {
+        user,
+        startsAt: now,
+        endsAt: new Date(+now + 10 * 86400000),
+        total: openingTotal,
+        current: true,
+        qualifiedLevels: qualifiedSalaryLevels(openingTotal),
+        claims: [],
+      },
+    ],
+    { session },
+  );
+  return created;
+}
+export async function recordSalaryDeposit(user, amount, session) {
+  const source = await M.User.findById(user).session(session);
+  ensure(source, "User not found", 404);
+  for (const ancestor of source.ancestors) {
+    const cycle = await ensureSalaryCycle(ancestor, session);
+    cycle.total += amount;
+    cycle.qualifiedLevels = qualifiedSalaryLevels(cycle.total);
+    await cycle.save({ session });
+  }
+}
 export async function purchase(user, requestKey) {
   ensure(
     typeof requestKey === "string" &&
@@ -248,30 +325,6 @@ export async function recordRevenue(admin, user, amount, externalRef, reason) {
           );
         }
       }
-    }
-    for (const ancestor of source.ancestors) {
-      const members = await M.User.find({ ancestors: ancestor })
-        .select("_id")
-        .session(s);
-      const total =
-        (
-          await M.Revenue.aggregate([
-            { $match: { user: { $in: members.map((x) => x._id) } } },
-            { $group: { _id: null, total: { $sum: "$amount" } } },
-          ]).session(s)
-        )[0]?.total || 0;
-      for (let i = 0; i < LEVELS.length; i++)
-        if (total >= LEVELS[i][0])
-          await M.SalaryBonus.updateOne(
-            { user: ancestor, level: i + 1 },
-            {
-              $setOnInsert: {
-                qualifiedAt: new Date(),
-                claimAfter: new Date(Date.now() + 10 * 86400000),
-              },
-            },
-            { upsert: true, session: s },
-          );
     }
     return r;
   });

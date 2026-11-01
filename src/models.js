@@ -200,6 +200,35 @@ export const SalaryBonus = model(
   },
   [[{ user: 1, level: 1 }, { unique: true }]],
 );
+export const SalaryCycle = model(
+  "SalaryCycle",
+  {
+    user: ref("User"),
+    startsAt: Date,
+    endsAt: Date,
+    total: minor,
+    current: { type: Boolean, default: true },
+    qualifiedLevels: [Number],
+    claims: [
+      {
+        level: Number,
+        claimedAt: Date,
+        transaction: ref("Transaction"),
+        _id: false,
+      },
+    ],
+  },
+  [
+    [{ user: 1, startsAt: 1 }, { unique: true }],
+    [
+      { user: 1, current: 1 },
+      {
+        unique: true,
+        partialFilterExpression: { current: true },
+      },
+    ],
+  ],
+);
 export const PromoCode = model("PromoCode", {
   code: { type: String, unique: true },
   budget: minor,

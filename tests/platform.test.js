@@ -587,29 +587,56 @@ test("promo claims enforce one per user and atomic capacity", async () => {
     400,
   );
 });
-test("deposits never qualify team targets; verified revenue starts independent ten-day timers", async () => {
-  assert.equal((await api().get("/salary")).body.total, 0);
-  const r = await recordRevenue(
+test("salary uses a common ten-day cycle and only new approved deposits advance targets", async () => {
+  let salary = (await api().get("/salary")).body;
+  assert.equal(salary.total, 0);
+  assert.equal(
+    Date.parse(salary.cycleEndsAt) - Date.parse(salary.cycleStartsAt),
+    864000000,
+  );
+  await recordRevenue(
     admin.id,
     second.id,
     1000000,
     "REV-TEST-001",
     "Verified real business activity test",
   );
-  const states = await M.SalaryBonus.find({ user: u.id }).sort({ level: 1 });
-  assert.equal(states.length, 2);
-  assert.equal(+states[0].claimAfter - +states[0].qualifiedAt, 864000000);
+  assert.equal((await api().get("/salary")).body.total, 0);
+  const deposit = await M.Deposit.create({
+    user: second.id,
+    amount: 1000000,
+    method: "EasyPaisa",
+    tid: "SALARY-CYCLE-DEPOSIT",
+    status: "pending",
+  });
+  const approval = await api(adminToken).post(
+    `/admin/deposits/${deposit.id}/decision`,
+    { status: "approved", reason: "Approved salary cycle deposit" },
+  );
+  assert.equal(approval.status, 200, approval.text);
+  salary = (await api().get("/salary")).body;
+  assert.equal(salary.total, 1000000);
+  assert.equal(salary.states.length, 2);
+  assert.equal(
+    Date.parse(salary.states[0].claimAfter),
+    Date.parse(salary.cycleEndsAt),
+  );
   assert.equal((await api().post("/salary/1/claim", {})).status, 400);
   assert.equal(await M.Commission.countDocuments(), 0);
 });
-test("bonus claim requires approved policy, elapsed ten days, funds; claims only once", async () => {
+test("salary claims once per level and the next cycle resets progress", async () => {
   await M.ApplicationConfiguration.create({
     key: "bonusPolicy",
     value: { enabled: true, reference: "test-approved-business-budget" },
   });
-  await M.SalaryBonus.updateOne(
-    { user: u.id, level: 1 },
-    { $set: { claimAfter: new Date(Date.now() - 1000) } },
+  await M.SalaryCycle.updateOne(
+    { user: u.id, current: true },
+    {
+      $set: {
+        startsAt: new Date(Date.now() - 10 * 86400000 - 1000),
+        endsAt: new Date(Date.now() - 1000),
+      },
+    },
   );
   const result = await Promise.all([
     api().post("/salary/1/claim", {}),
@@ -623,6 +650,11 @@ test("bonus claim requires approved policy, elapsed ten days, funds; claims only
     }),
     1,
   );
+  const nextResponse = await api().get("/salary");
+  assert.equal(nextResponse.status, 200, nextResponse.text);
+  const next = nextResponse.body;
+  assert.equal(next.total, 0);
+  assert.ok(Date.parse(next.cycleEndsAt) > Date.now());
 });
 test("manual adjustments are funded, idempotent, nonnegative and audited", async () => {
   const payload = {

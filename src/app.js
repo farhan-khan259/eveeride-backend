@@ -41,6 +41,8 @@ import {
   activePlan,
   purchase,
   recordRevenue,
+  ensureSalaryCycle,
+  recordSalaryDeposit,
 } from "./finance.js";
 export const app = express();
 app.disable("x-powered-by");
@@ -843,23 +845,51 @@ app.get(
 app.get(
   "/api/salary",
   route(async (req, res) => {
-    const users = await M.User.find({ ancestors: req.user._id }).select("_id"),
-      total =
-        (
-          await M.Revenue.aggregate([
-            { $match: { user: { $in: users.map((x) => x._id) } } },
-            { $group: { _id: null, total: { $sum: "$amount" } } },
-          ])
-        )[0]?.total || 0;
+    const cycle = await atomic((s) => ensureSalaryCycle(req.user.id, s)),
+      cycles = await M.SalaryCycle.find({
+        user: req.user.id,
+        qualifiedLevels: { $exists: true, $ne: [] },
+      }).sort({ startsAt: 1 }),
+      states = LEVELS.flatMap((_, index) => {
+        const level = index + 1,
+          pending = cycles.find(
+            (item) =>
+              item.qualifiedLevels.includes(level) &&
+              !item.claims.some((claim) => claim.level === level),
+          ),
+          currentClaim = cycle.claims.find((claim) => claim.level === level);
+        if (pending)
+          return [
+            {
+              level,
+              qualifiedAt: pending.startsAt,
+              claimAfter: pending.endsAt,
+              cycle: pending.id,
+            },
+          ];
+        if (currentClaim)
+          return [
+            {
+              level,
+              qualifiedAt: cycle.startsAt,
+              claimAfter: cycle.endsAt,
+              claimedAt: currentClaim.claimedAt,
+              cycle: cycle.id,
+            },
+          ];
+        return [];
+      });
     res.json({
-      total,
+      total: cycle.total,
+      cycleStartsAt: cycle.startsAt,
+      cycleEndsAt: cycle.endsAt,
       serverTime: new Date(),
       levels: LEVELS.map(([target, bonus], i) => ({
         level: i + 1,
         target,
         bonus,
       })),
-      states: await M.SalaryBonus.find({ user: req.user.id }),
+      states,
     });
   }),
 );
@@ -869,17 +899,17 @@ app.post(
     res.json(
       await atomic(async (s) => {
         ensure(await activePlan(req.user.id, s), "Active paid plan required");
-        const b = await M.SalaryBonus.findOne({
-          user: req.user.id,
-          level: Number(req.params.level),
-        }).session(s);
+        const level = Number(req.params.level),
+          b = await M.SalaryCycle.findOne({
+            user: req.user.id,
+            qualifiedLevels: level,
+            "claims.level": { $ne: level },
+          })
+            .sort({ startsAt: 1 })
+            .session(s);
+        ensure(b, "Bonus not qualified or already claimed", 409);
         ensure(
-          b && !b.claimedAt,
-          "Bonus not qualified or already claimed",
-          409,
-        );
-        ensure(
-          b.claimAfter <= new Date(),
+          b.endsAt <= new Date(),
           "The ten-day waiting period has not ended",
         );
         const policy = await config("bonusPolicy", { enabled: false }, s);
@@ -890,17 +920,23 @@ app.post(
         );
         const t = await award(
           req.user.id,
-          LEVELS[b.level - 1][1],
-          `bonus:${b.id}`,
+          LEVELS[level - 1][1],
+          `salary:${b.id}:${level}`,
           "salary_bonus",
-          `Level ${b.level} one-time bonus`,
+          `Level ${level} cycle salary reward`,
           s,
           b.id,
         );
-        b.claimedAt = new Date();
-        b.transaction = t.id;
-        await b.save({ session: s });
-        return { message: "One-time bonus credited" };
+        await M.SalaryCycle.updateOne(
+          { _id: b.id, "claims.level": { $ne: level } },
+          {
+            $push: {
+              claims: { level, claimedAt: new Date(), transaction: t.id },
+            },
+          },
+          { session: s },
+        );
+        return { message: "Salary reward credited" };
       }),
     ),
   ),
@@ -1346,6 +1382,7 @@ app.post(
             s,
             d.id,
           );
+          await recordSalaryDeposit(d.user, d.amount, s);
         }
         d.status = status;
         d.reason = reason;
