@@ -157,6 +157,11 @@ app.post(
           }).session(s)
         : null;
       ensure(!b.referralCode || ref, "Invalid referral code");
+      ensure(
+        !(await M.User.exists({ email: b.email }).session(s)),
+        "An account with this email already exists. Please sign in instead.",
+        409,
+      );
       const [u] = await M.User.create(
         [
           {
@@ -1868,8 +1873,11 @@ app.use((err, req, res, _next) => {
   }
   if (err.code === 11000) {
     status = 409;
-    message =
-      "This record has already been processed or the email, username or transaction ID is already used";
+    message = err.keyPattern?.email
+      ? "An account with this email already exists. Please sign in instead."
+      : err.keyPattern?.username
+        ? "That username is already in use"
+        : "This record has already been processed or the transaction ID is already used";
   }
   if (err instanceof multer.MulterError) {
     status = 400;
