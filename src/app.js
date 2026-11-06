@@ -59,8 +59,11 @@ const id = (x) => {
 const page = (q) => Math.max(1, Math.min(10000, parseInt(q.page) || 1));
 const text = (x, min = 1, max = 500) =>
   z.string().trim().min(min).max(max).parse(x);
-const live = () => {
+const paymentsLive = () => {
   ensure(cfg.live, "Payment requests are currently unavailable", 503);
+};
+const withdrawalsLive = () => {
+  paymentsLive();
   ensure(
     hoursOpen(),
     "Requests are available only from 8:00 AM to 5:00 PM Pakistan time",
@@ -124,7 +127,15 @@ app.get(
     }),
   ),
 );
-const loginLimit = rateLimit({ windowMs: 15 * 60000, limit: 20 });
+const loginLimit = rateLimit({
+  windowMs: 15 * 60000,
+  limit: 20,
+  skipSuccessfulRequests: true,
+  handler: (_req, res) =>
+    res.status(429).json({
+      message: "Too many sign-in attempts. Please wait a few minutes and try again.",
+    }),
+});
 app.post(
   "/api/auth/register",
   loginLimit,
@@ -577,7 +588,13 @@ app.get(
       "Not authorized",
       403,
     );
-    res.type("video/mp4").sendFile(path.join(uploadDir, t.file));
+    const file = path.resolve(uploadDir, t.file);
+    const stat = await fs.stat(file).catch(() => null);
+    ensure(stat?.isFile(), "Video file is missing from storage", 404);
+    res.set("Cache-Control", "private, no-store");
+    res.type(t.mime || "video/mp4").sendFile(file, (error) => {
+        if (error && !res.headersSent) res.status(404).json({ message: "Video file could not be served" });
+    });
   }),
 );
 app.get(
@@ -597,7 +614,7 @@ app.get(
 app.post(
   "/api/deposits/order",
   route(async (req, res) => {
-    live();
+    paymentsLive();
     const amount = money(req.body.amount),
       method = z
         .enum(["EasyPaisa", "JazzCash", "Mashreq"])
@@ -622,7 +639,7 @@ app.post(
   "/api/deposits/:id/submit",
   upload.single("screenshot"),
   route(async (req, res) => {
-    live();
+    paymentsLive();
     await validateFile(req.file);
     const tid = text(req.body.tid, 6, 80);
     const d = await atomic(async (s) => {
@@ -715,7 +732,7 @@ app.put(
 app.post(
   "/api/withdrawals",
   route(async (req, res) => {
-    live();
+    withdrawalsLive();
     const amount = money(req.body.amount);
     ensure(amount >= 10000, "Minimum withdrawal is Rs 100");
     const w = await atomic(async (s) => {
@@ -1687,24 +1704,72 @@ app.post(
         .max(900)
         .parse(Number(req.body.duration)),
       title = text(req.body.title, 3, 100);
-    const t = await atomic(async (s) => {
-      const [t] = await M.Task.create(
-        [{ title, duration, file: req.file.filename, mime: "video/mp4" }],
-        { session: s },
-      );
+    const result = await atomic(async (s) => {
+        const existing = await M.Task.find({ title }).session(s);
+        const previous = existing.map((task) => task.file).filter(Boolean);
+        const tasks = existing.length
+          ? existing
+          : [
+              (
+                await M.Task.create(
+                  [{ title, duration, file: req.file.filename, mime: "video/mp4" }],
+                  { session: s },
+                )
+              )[0],
+            ];
+        for (const task of tasks) {
+          Object.assign(task, {
+            duration,
+            file: req.file.filename,
+            mime: "video/mp4",
+            active: true,
+          });
+          await task.save({ session: s });
+        }
+        await audit(
+          req.user.id,
+          null,
+          existing.length ? "replace_video" : "upload_video",
+          existing.length ? "Task video replaced" : "Task video uploaded",
+          null,
+          { title, duration },
+          tasks[0].id,
+          s,
+        );
+        return { task: tasks[0], previous };
+    });
+    for (const previous of new Set(result.previous)) {
+        if (previous !== result.task.file)
+          await fs.unlink(path.resolve(uploadDir, previous)).catch(() => {});
+    }
+    res.status(201).json(result.task);
+  }),
+);
+app.delete(
+  "/api/admin/videos",
+  route(async (req, res) => {
+    z.literal("DELETE").parse(req.body.confirmation);
+    const tasks = await M.Task.find().select("file");
+    const files = [...new Set(tasks.map((task) => task.file).filter(Boolean))];
+    const removed = await atomic(async (s) => {
+      const assignments = await M.TaskAssignment.deleteMany({}).session(s);
+      const result = await M.Task.deleteMany({}).session(s);
       await audit(
         req.user.id,
         null,
-        "upload_video",
-        "Task video uploaded",
+        "delete_videos",
+        "All task videos deleted",
         null,
-        { title, duration },
-        t.id,
+        { tasks: result.deletedCount, assignments: assignments.deletedCount },
+        null,
         s,
       );
-      return t;
+      return { tasks: result.deletedCount, assignments: assignments.deletedCount };
     });
-    res.status(201).json(t);
+    await Promise.all(
+      files.map((file) => fs.unlink(path.resolve(uploadDir, file)).catch(() => {})),
+    );
+    res.json({ message: "All previous task videos were deleted", ...removed });
   }),
 );
 app.get(
