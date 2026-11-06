@@ -51,6 +51,7 @@ export const User = model("User", {
   sessionVersion: { type: Number, default: 0 },
   resetHash: { type: String, select: false },
   resetExpires: Date,
+  resetRequestedAt: { type: Date, select: false },
   avatar: String,
   avatarMime: String,
 });

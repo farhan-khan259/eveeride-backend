@@ -222,21 +222,31 @@ test("password reset is generic, hashed, single-use and revokes sessions", async
   assert.deepEqual(r.body, unknown.body);
   const mail = await M.Outbox.findOne({
     user: second.id,
-    subject: "Reset your password",
+    subject: "Your EveeRide password reset OTP",
   });
-  const raw = mail.text.split("token=")[1];
+  const raw = mail.text.match(/\b\d{6}\b/)[0];
   const saved = await M.User.findById(second.id).select("+resetHash");
   assert.notEqual(saved.resetHash, raw);
   const reset = await request(app)
     .post("/api/auth/reset")
-    .send({ token: raw, password: "ChangedSecure123" });
+    .send({
+      email: second.email,
+      otp: raw,
+      password: "ChangedSecure123",
+      confirmPassword: "ChangedSecure123",
+    });
   assert.equal(reset.status, 200, reset.text);
   assert.equal((await api(secondToken).get("/me")).status, 401);
   assert.equal(
     (
       await request(app)
         .post("/api/auth/reset")
-        .send({ token: raw, password: "ChangedSecure123" })
+        .send({
+          email: second.email,
+          otp: raw,
+          password: "ChangedSecure123",
+          confirmPassword: "ChangedSecure123",
+        })
     ).status,
     400,
   );

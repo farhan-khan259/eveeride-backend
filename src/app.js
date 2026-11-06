@@ -257,20 +257,27 @@ app.post(
   loginLimit,
   route(async (req, res) => {
     const email = z.string().email().parse(req.body.email).toLowerCase(),
-      token = crypto.randomBytes(32).toString("hex");
+      otp = String(crypto.randomInt(100000, 1000000));
     await atomic(async (s) => {
-      const u = await M.User.findOne({ email }).session(s);
-      if (u) {
-        u.resetHash = hash(token);
-        u.resetExpires = new Date(Date.now() + 30 * 60000);
+      const u = await M.User.findOne({ email })
+        .select("+resetRequestedAt")
+        .session(s);
+      const canSend =
+        u &&
+        (!u.resetRequestedAt ||
+          Date.now() - u.resetRequestedAt.getTime() >= 30000);
+      if (canSend) {
+        u.resetHash = hash(otp);
+        u.resetExpires = new Date(Date.now() + 10 * 60000);
+        u.resetRequestedAt = new Date();
         await u.save({ session: s });
         await M.Outbox.create(
           [
             {
               user: u.id,
               email,
-              subject: "Reset your password",
-              text: `Reset your password within 30 minutes: ${cfg.web}/reset?token=${token}`,
+              subject: "Your EveeRide password reset OTP",
+              text: `Your EveeRide password reset OTP is ${otp}. It expires in 10 minutes. If you did not request this code, you can ignore this email.`,
             },
           ],
           { session: s },
@@ -278,7 +285,7 @@ app.post(
       }
     });
     res.json({
-      message: "If that email is registered, a reset link will be sent.",
+      message: "If that email is registered, a six-digit OTP will be sent.",
     });
   }),
 );
@@ -286,20 +293,33 @@ app.post(
   "/api/auth/reset",
   loginLimit,
   route(async (req, res) => {
-    const p = password.parse(req.body.password),
-      token = text(req.body.token, 64, 64),
+    const body = z
+        .object({
+          email: z.string().email().transform((value) => value.toLowerCase()),
+          otp: z.string().regex(/^\d{6}$/, "Enter the six-digit OTP"),
+          password,
+          confirmPassword: z.string().min(1).max(100),
+        })
+        .parse(req.body),
+      p = body.password,
       pw = await bcrypt.hash(p, 12);
+    ensure(
+      body.password === body.confirmPassword,
+      "New password confirmation does not match",
+    );
     await atomic(async (s) => {
       const u = await M.User.findOne({
-        resetHash: hash(token),
+        email: body.email,
+        resetHash: hash(body.otp),
         resetExpires: { $gt: new Date() },
       })
-        .select("+resetHash")
+        .select("+resetHash +resetRequestedAt")
         .session(s);
-      ensure(u, "Reset link is invalid or expired");
+      ensure(u, "OTP is invalid or expired");
       u.password = pw;
       u.resetHash = undefined;
       u.resetExpires = undefined;
+      u.resetRequestedAt = undefined;
       u.sessionVersion++;
       await u.save({ session: s });
     });
