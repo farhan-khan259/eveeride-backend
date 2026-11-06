@@ -18,11 +18,13 @@ export const cfg = {
 export const PLAN = {
   name: "EVEERIDE — STARTER PLAN",
   price: 51000,
-  reward: 4250,
+  reward: 3400,
   dailyTasks: 1,
-  days: 28,
+  days: 35,
   maxPurchases: 3,
 };
+export const DEPOSIT_COMMISSION_RATES = [7, 3, 2, 2];
+export const TEAM_EARNING_COMMISSION_RATE = 4;
 export const LEVELS = [
   [500000, 50000],
   [1000000, 100000],

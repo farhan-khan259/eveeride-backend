@@ -15,6 +15,8 @@ import {
   Fault,
   PLAN,
   LEVELS,
+  DEPOSIT_COMMISSION_RATES,
+  TEAM_EARNING_COMMISSION_RATE,
   hoursOpen,
   money,
   dayKey,
@@ -43,6 +45,7 @@ import {
   recordRevenue,
   ensureSalaryCycle,
   recordSalaryDeposit,
+  recordDepositCommissions,
 } from "./finance.js";
 export const app = express();
 app.disable("x-powered-by");
@@ -123,6 +126,10 @@ app.get(
       support: cfg.support,
       business: cfg.business,
       policy: "Team progress includes eligible activity from four referral levels.",
+      commissions: {
+        deposit: DEPOSIT_COMMISSION_RATES,
+        teamEarning: [TEAM_EARNING_COMMISSION_RATE],
+      },
       subscribers: (await M.PlanPurchase.distinct("user")).length,
     }),
   ),
@@ -548,7 +555,9 @@ app.post(
           req.user.ancestors[0] &&
           (await activePlan(req.user.ancestors[0], s))
         ) {
-          const n = Math.floor((t.reward * 2) / 100);
+          const n = Math.floor(
+            (t.reward * TEAM_EARNING_COMMISSION_RATE) / 100,
+          );
           await award(
             req.user.ancestors[0],
             n,
@@ -1405,6 +1414,7 @@ app.post(
             d.id,
           );
           await recordSalaryDeposit(d.user, d.amount, s);
+          await recordDepositCommissions(d.user, d.amount, d.id, s);
         }
         d.status = status;
         d.reason = reason;

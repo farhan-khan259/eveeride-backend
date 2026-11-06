@@ -3,7 +3,14 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 process.env.JWT_SECRET = "unit-test-secret-with-more-than-32-characters";
 process.env.PAYOUT_ENCRYPTION_KEY = "a".repeat(64);
-const { money, hoursOpen, PLAN, LEVELS } = await import("../src/config.js");
+const {
+  money,
+  hoursOpen,
+  PLAN,
+  LEVELS,
+  DEPOSIT_COMMISSION_RATES,
+  TEAM_EARNING_COMMISSION_RATE,
+} = await import("../src/config.js");
 const { take } = await import("../src/finance.js");
 const { seal, unseal, hash, sign } = await import("../src/security.js");
 const M = await import("../src/models.js");
@@ -102,11 +109,18 @@ test("ledger and audits reject query mutation before any database operation", as
   await assert.rejects(() => M.AdminAuditLog.deleteMany({}), /append only/);
 });
 test("fixed plan and ten one-time levels preserve requested amounts", () => {
-  assert.equal(PLAN.reward * 28, 119000);
+  assert.equal(PLAN.reward, 3400);
+  assert.equal(PLAN.dailyTasks, 1);
+  assert.equal(PLAN.days, 35);
+  assert.equal(PLAN.reward * PLAN.dailyTasks * PLAN.days, 119000);
   assert.equal(PLAN.price, 51000);
   assert.equal(PLAN.maxPurchases, 3);
   assert.equal(LEVELS.length, 10);
   assert.deepEqual(LEVELS[9], [10000000, 500000]);
+});
+test("commission rates match the published deposit and team earning policy", () => {
+  assert.deepEqual(DEPOSIT_COMMISSION_RATES, [7, 3, 2, 2]);
+  assert.equal(TEAM_EARNING_COMMISSION_RATE, 4);
 });
 test("protected routes reject unauthenticated requests without database access", async () => {
   for (const endpoint of ["/me", "/admin/dashboard", "/transactions"])

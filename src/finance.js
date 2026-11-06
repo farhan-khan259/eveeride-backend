@@ -1,6 +1,12 @@
 import mongoose from "mongoose";
 import * as M from "./models.js";
-import { ensure, PLAN, LEVELS, Fault } from "./config.js";
+import {
+  ensure,
+  PLAN,
+  LEVELS,
+  DEPOSIT_COMMISSION_RATES,
+  Fault,
+} from "./config.js";
 export async function atomic(fn) {
   return mongoose.connection.transaction(fn);
 }
@@ -291,41 +297,44 @@ export async function recordRevenue(admin, user, amount, externalRef, reason) {
       s,
       r.id,
     );
-    const policy = await config(
-      "referralPolicy",
-      { enabled: false, reference: "" },
-      s,
-    );
-    if (policy.enabled && policy.reference) {
-      for (let i = 0; i < source.ancestors.length; i++) {
-        const ancestor = source.ancestors[i],
-          n = Math.floor((amount * [8, 4, 2, 1][i]) / 100);
-        if (n && (await activePlan(ancestor, s))) {
-          await award(
-            ancestor,
-            n,
-            `commission:${r.id}:${i}`,
-            "team_commission",
-            "Revenue referral reward",
-            s,
-            r.id,
-          );
-          await M.Commission.create(
-            [
-              {
-                user: ancestor,
-                source: user,
-                event: r.id,
-                level: i + 1,
-                amount: n,
-                kind: "revenue",
-              },
-            ],
-            { session: s },
-          );
-        }
-      }
-    }
     return r;
   });
+}
+export async function recordDepositCommissions(user, amount, event, session) {
+  const source = await M.User.findById(user).session(session);
+  ensure(source, "User not found", 404);
+  const policy = await config(
+    "referralPolicy",
+    { enabled: false, reference: "" },
+    session,
+  );
+  if (!policy.enabled || !policy.reference) return;
+  for (let i = 0; i < DEPOSIT_COMMISSION_RATES.length; i++) {
+    const ancestor = source.ancestors[i];
+    if (!ancestor) continue;
+    const commission = Math.floor(
+      (amount * DEPOSIT_COMMISSION_RATES[i]) / 100,
+    );
+    if (!commission || !(await activePlan(ancestor, session))) continue;
+    await award(
+      ancestor,
+      commission,
+      `depositcommission:${event}:${i + 1}`,
+      "team_commission",
+      `Level ${i + 1} deposit commission`,
+      session,
+      event,
+    );
+    await M.Commission.create(
+      [{
+        user: ancestor,
+        source: user,
+        event: String(event),
+        level: i + 1,
+        amount: commission,
+        kind: "deposit",
+      }],
+      { session },
+    );
+  }
 }
