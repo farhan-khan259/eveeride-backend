@@ -841,6 +841,7 @@ app.get(
 app.get(
   "/api/team",
   route(async (req, res) => {
+    const now = new Date();
     const members = await M.User.find({ ancestors: req.user._id }).select(
       "_id name ancestors createdAt",
     );
@@ -858,13 +859,24 @@ app.get(
       ]),
       memberDeposits = new Map(
         memberDepositRows.map((x) => [String(x._id), x.total]),
+      ),
+      activePlanIds = new Set(
+        (
+          await M.PlanPurchase.distinct("user", {
+            user: { $in: ids },
+            start: { $lte: now },
+            expires: { $gt: now },
+          })
+        ).map(String),
       );
     res.json({
       members: members.map((x) => ({
+        id: x.id,
         name: x.name,
         level: x.ancestors.findIndex((a) => a.equals(req.user._id)) + 1,
         joined: x.createdAt,
         deposits: memberDeposits.get(String(x._id)) || 0,
+        active: activePlanIds.has(String(x._id)),
       })),
       levels: [0, 1, 2, 3].map(
         (i) =>
