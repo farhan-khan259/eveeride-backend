@@ -75,7 +75,7 @@ const withdrawalsLive = () => {
 };
 const password = z
   .string()
-  .min(10)
+  .min(8)
   .max(100)
   .regex(/[A-Z]/, "Include an uppercase letter")
   .regex(/[a-z]/, "Include a lowercase letter")
