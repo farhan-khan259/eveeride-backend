@@ -626,7 +626,7 @@ test("salary uses a common ten-day cycle and only new approved deposits advance 
   assert.equal(approval.status, 200, approval.text);
   salary = (await api().get("/salary")).body;
   assert.equal(salary.total, 1000000);
-  assert.equal(salary.states.length, 2);
+  assert.equal(salary.states.length, 1);
   assert.equal(
     Date.parse(salary.states[0].claimAfter),
     Date.parse(salary.cycleEndsAt),

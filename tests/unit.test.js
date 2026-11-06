@@ -115,8 +115,18 @@ test("fixed plan and ten one-time levels preserve requested amounts", () => {
   assert.equal(PLAN.reward * PLAN.dailyTasks * PLAN.days, 119000);
   assert.equal(PLAN.price, 51000);
   assert.equal(PLAN.maxPurchases, 3);
-  assert.equal(LEVELS.length, 10);
-  assert.deepEqual(LEVELS[9], [10000000, 500000]);
+  assert.deepEqual(LEVELS, [
+    [1000000, 50000],
+    [2000000, 80000],
+    [3000000, 120000],
+    [5000000, 210000],
+    [10000000, 400000],
+    [15000000, 800000],
+    [20000000, 1400000],
+    [30000000, 2000000],
+    [40000000, 3000000],
+    [50000000, 4000000],
+  ]);
 });
 test("commission rates match the published deposit and team earning policy", () => {
   assert.deepEqual(DEPOSIT_COMMISSION_RATES, [7, 3, 2, 2]);
