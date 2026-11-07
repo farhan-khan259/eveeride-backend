@@ -1136,18 +1136,23 @@ app.use("/api/admin", admin);
 app.get(
   "/api/admin/dashboard",
   route(async (_req, res) => {
-    const sum = async (model, match) =>
+    const sum = async (model, match, field = "amount") =>
       (
         await model.aggregate([
           { $match: match },
-          { $group: { _id: null, total: { $sum: "$amount" } } },
+          { $group: { _id: null, total: { $sum: `$${field}` } } },
         ])
       )[0]?.total || 0;
     const now = new Date(),
       pakistanNow = new Date(now.getTime() + 5 * 60 * 60 * 1000),
       pakistanToday = new Date(pakistanNow);
     pakistanToday.setUTCHours(0, 0, 0, 0);
-    const chartStart = new Date(
+    const todayStart = new Date(
+        pakistanToday.getTime() - 5 * 60 * 60 * 1000,
+      ),
+      todayEnd = new Date(todayStart.getTime() + 86400000),
+      today = { $gte: todayStart, $lt: todayEnd },
+      chartStart = new Date(
         pakistanToday.getTime() - 6 * 86400000 - 5 * 60 * 60 * 1000,
       ),
       groupByPakistanDay = {
@@ -1211,6 +1216,39 @@ app.get(
           },
         ])
       )[0]?.total || 0;
+    const [
+      todayDeposit,
+      todayWithdraw,
+      todayInvestment,
+      todayJoined,
+      totalDeposit,
+      totalWithdraw,
+      totalInvestment,
+      totalEarningsPaid,
+      totalExternalRevenue,
+    ] = await Promise.all([
+      sum(M.Deposit, { status: "approved", createdAt: today }),
+      sum(M.Withdrawal, { status: "approved", createdAt: today }),
+      sum(M.PlanPurchase, { createdAt: today }, "price"),
+      M.User.countDocuments({ createdAt: today }),
+      sum(M.Deposit, { status: "approved" }),
+      sum(M.Withdrawal, { status: "approved" }),
+      sum(M.PlanPurchase, {}, "price"),
+      sum(M.Transaction, {
+        category: {
+          $in: [
+            "task_earning",
+            "salary_bonus",
+            "team_commission",
+            "team_task_commission",
+          ],
+        },
+      }),
+      sum(M.Revenue, {}),
+    ]);
+    const platformProfit = totalInvestment + totalExternalRevenue - totalEarningsPaid,
+      platformBalance =
+        totalDeposit + totalExternalRevenue - totalWithdraw - totalEarningsPaid;
     res.json({
       users: await M.User.countDocuments(),
       activeUsers: await M.User.countDocuments({ status: "active" }),
@@ -1227,6 +1265,19 @@ app.get(
       commissions: await sum(M.Commission, {}),
       bonuses: await sum(M.Transaction, { category: "salary_bonus" }),
       liabilities,
+      today: {
+        deposit: todayDeposit,
+        withdraw: todayWithdraw,
+        investment: todayInvestment,
+        joined: todayJoined,
+      },
+      totals: {
+        deposit: totalDeposit,
+        withdraw: totalWithdraw,
+        earningsPaid: totalEarningsPaid,
+        platformProfit,
+        platformBalance,
+      },
       activity,
     });
   }),
