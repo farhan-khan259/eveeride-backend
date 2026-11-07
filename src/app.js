@@ -419,6 +419,7 @@ async function snapshot(user) {
     plans,
     activePlans: active,
     available: u.wallet.deposit + u.wallet.earned + u.wallet.promo,
+    depositBalance: u.wallet.deposit,
     withdrawable: active.length
       ? u.wallet.deposit +
         u.wallet.earned +
