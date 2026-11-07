@@ -427,7 +427,12 @@ async function snapshot(user) {
       : 0,
     pending: u.wallet.pending,
     totals: Object.fromEntries(totals.map((x) => [x._id, x.amount])),
-    recent: await M.Transaction.find({ user }).sort({ createdAt: -1 }).limit(5),
+    recent: await M.Transaction.find({
+      user,
+      category: { $ne: "registration_backing" },
+    })
+      .sort({ createdAt: -1 })
+      .limit(5),
     serverTime: new Date(),
   };
 }
@@ -1080,6 +1085,10 @@ app.get(
     const q = { ...req.query };
     delete q.user;
     const f = transactionFilter(q, req.user.id);
+    f.$and = [
+      ...(f.$and || []),
+      { category: { $ne: "registration_backing" } },
+    ];
     res.json({
       items: await M.Transaction.find(f)
         .sort({ createdAt: -1 })
