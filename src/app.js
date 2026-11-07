@@ -413,13 +413,31 @@ async function snapshot(user) {
   const totals = await M.Transaction.aggregate([
     { $match: { user: u._id } },
     { $group: { _id: "$category", amount: { $sum: "$amount" } } },
-  ]);
+  ]),
+    totalEarnings = await M.Transaction.aggregate([
+      {
+        $match: {
+          user: u._id,
+          amount: { $gt: 0 },
+          category: {
+            $nin: [
+              "deposit",
+              "plan_purchase",
+              "registration_backing",
+              "withdrawal",
+            ],
+          },
+        },
+      },
+      { $group: { _id: null, amount: { $sum: "$amount" } } },
+    ]);
   return {
     user: publicUser(u),
     plans,
     activePlans: active,
     available: u.wallet.deposit + u.wallet.earned + u.wallet.promo,
     depositBalance: u.wallet.deposit,
+    totalEarnings: totalEarnings[0]?.amount || 0,
     withdrawable: active.length
       ? u.wallet.deposit +
         u.wallet.earned +
