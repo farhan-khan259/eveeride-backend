@@ -556,15 +556,23 @@ app.get(
 app.get(
   "/api/tasks/history",
   route(async (req, res) => {
-    const history = await M.TaskAssignment.find({
+    const currentPage = page(req.query),
+      limit = 10,
+      filter = {
       user: req.user.id,
       completed: { $ne: null },
-    })
+      },
+      history = await M.TaskAssignment.find(filter)
       .sort({ completed: -1 })
-      .limit(100)
+      .skip((currentPage - 1) * limit)
+      .limit(limit)
       .populate("task", "title duration")
       .populate("purchase", "planType name");
-    res.json(history);
+    res.json({
+      items: history,
+      total: await M.TaskAssignment.countDocuments(filter),
+      page: currentPage,
+    });
   }),
 );
 app.post(
