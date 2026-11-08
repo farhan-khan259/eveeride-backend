@@ -3,6 +3,7 @@ import * as M from "./models.js";
 import {
   ensure,
   PLAN,
+  FREE_PLAN,
   LEVELS,
   DEPOSIT_COMMISSION_RATES,
   Fault,
@@ -268,6 +269,43 @@ export async function purchase(user, requestKey) {
       p.id,
     );
     return p;
+  });
+}
+export async function activateFreePlan(user, requestKey) {
+  ensure(
+    typeof requestKey === "string" &&
+      requestKey.length >= 8 &&
+      requestKey.length <= 100,
+    "A valid activation request ID is required",
+  );
+  return atomic(async (s) => {
+    const existing = await M.PlanPurchase.findOne({ user, requestKey }).session(
+      s,
+    );
+    if (existing) return existing;
+    ensure(
+      !(await M.PlanPurchase.exists({ user, planType: "free" }).session(s)),
+      "Your free plan has already been activated",
+      409,
+    );
+    const now = new Date();
+    const [plan] = await M.PlanPurchase.create(
+      [
+        {
+          user,
+          name: FREE_PLAN.name,
+          price: 0,
+          reward: FREE_PLAN.reward,
+          planType: "free",
+          start: now,
+          expires: new Date(+now + FREE_PLAN.days * 86400000),
+          sequence: 0,
+          requestKey,
+        },
+      ],
+      { session: s },
+    );
+    return plan;
   });
 }
 export async function recordRevenue(admin, user, amount, externalRef, reason) {

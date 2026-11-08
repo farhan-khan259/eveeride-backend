@@ -23,6 +23,14 @@ export const PLAN = {
   days: 35,
   maxPurchases: 3,
 };
+export const FREE_PLAN = {
+  name: "EveeRide FREE PLAN",
+  price: 0,
+  reward: 500,
+  dailyTasks: 1,
+  days: 10,
+  maxPurchases: 1,
+};
 export const DEPOSIT_COMMISSION_RATES = [7, 3, 2, 2];
 export const TEAM_EARNING_COMMISSION_RATE = 4;
 export const LEVELS = [

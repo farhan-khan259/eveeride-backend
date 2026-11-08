@@ -14,6 +14,7 @@ import {
   ensure,
   Fault,
   PLAN,
+  FREE_PLAN,
   LEVELS,
   DEPOSIT_COMMISSION_RATES,
   TEAM_EARNING_COMMISSION_RATE,
@@ -42,6 +43,7 @@ import {
   take,
   activePlan,
   purchase,
+  activateFreePlan,
   recordRevenue,
   ensureSalaryCycle,
   recordSalaryDeposit,
@@ -461,7 +463,12 @@ app.get(
   route(async (req, res) =>
     res.json({
       plan: PLAN,
+      freePlan: FREE_PLAN,
       purchases: await M.PlanPurchase.find({ user: req.user.id }),
+      freePurchase: await M.PlanPurchase.findOne({
+        user: req.user.id,
+        planType: "free",
+      }),
       subscribers: (await M.PlanPurchase.distinct("user")).length,
     }),
   ),
@@ -470,6 +477,14 @@ app.post(
   "/api/plans/purchase",
   route(async (req, res) =>
     res.status(201).json(await purchase(req.user.id, req.body.requestId)),
+  ),
+);
+app.post(
+  "/api/plans/free/activate",
+  route(async (req, res) =>
+    res.status(201).json(
+      await activateFreePlan(req.user.id, req.body.requestId),
+    ),
   ),
 );
 app.get(
@@ -497,7 +512,7 @@ app.get(
             $setOnInsert: {
               user: req.user.id,
               purchase: p.id,
-              task: tasks[i % tasks.length]._id,
+              task: tasks[0]._id,
               day: dayKey(),
               expires: new Date(Math.min(+p.expires, +now + 86400000)),
               reward: p.reward,
@@ -790,7 +805,7 @@ app.post(
       const u = await M.User.findById(req.user.id).session(s);
       ensure(
         await activePlan(u.id, s),
-        "An active paid plan is required to withdraw",
+        "An active plan is required to withdraw",
       );
       ensure(
         !(await M.Withdrawal.exists({
