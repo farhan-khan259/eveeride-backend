@@ -213,8 +213,12 @@ export async function purchase(user, requestKey) {
     );
     if (existing) return existing;
     const u = await M.User.findById(user).session(s);
+    const paidPurchases = await M.PlanPurchase.countDocuments({
+      user,
+      planType: "paid",
+    }).session(s);
     ensure(
-      u.purchases < 3,
+      paidPurchases < 3,
       "Your maximum plan purchase limit has been reached",
       409,
     );
@@ -235,7 +239,7 @@ export async function purchase(user, requestKey) {
       u.promoUnlocked = true;
     }
     for (const k of Object.keys(cuts)) u.wallet[k] -= cuts[k];
-    u.purchases++;
+    u.purchases = paidPurchases + 1;
     await u.save({ session: s });
     const now = new Date();
     const [p] = await M.PlanPurchase.create(

@@ -84,6 +84,11 @@ const password = z
   .regex(/[0-9]/, "Include a number");
 const uploadDir = path.resolve(process.env.UPLOAD_DIR || "uploads");
 await fs.mkdir(uploadDir, { recursive: true });
+function uploadPath(storedFile) {
+  const filename = path.basename(String(storedFile || ""));
+  ensure(filename && filename !== "." && filename !== "..", "Invalid stored file");
+  return path.join(uploadDir, filename);
+}
 const upload = multer({
   storage: multer.diskStorage({
     destination: uploadDir,
@@ -535,17 +540,31 @@ app.get(
             day: dayKey(),
           })
             .populate("task")
-            .populate("purchase", "planType"),
+            .populate("purchase", "planType name"),
         );
       } else {
         await latest.populate([
           { path: "task" },
-          { path: "purchase", select: "planType" },
+          { path: "purchase", select: "planType name" },
         ]);
         assignments.push(latest);
       }
     }
     res.json(assignments.filter(Boolean));
+  }),
+);
+app.get(
+  "/api/tasks/history",
+  route(async (req, res) => {
+    const history = await M.TaskAssignment.find({
+      user: req.user.id,
+      completed: { $ne: null },
+    })
+      .sort({ completed: -1 })
+      .limit(100)
+      .populate("task", "title duration")
+      .populate("purchase", "planType name");
+    res.json(history);
   }),
 );
 app.post(
@@ -651,7 +670,10 @@ app.post(
             { session: s },
           );
         }
-        return { message: "Task completed. Reward credited." };
+        return {
+          message: "Task completed. Reward credited.",
+          reward: t.reward,
+        };
       }),
     ),
   ),
@@ -667,7 +689,7 @@ app.get(
       "Not authorized",
       403,
     );
-    const file = path.resolve(uploadDir, t.file);
+    const file = uploadPath(t.file);
     const stat = await fs.stat(file).catch(() => null);
     ensure(stat?.isFile(), "Video file is missing from storage", 404);
     res.set("Cache-Control", "private, no-store");
