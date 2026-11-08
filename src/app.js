@@ -1066,6 +1066,17 @@ app.post(
     ),
   ),
 );
+app.get(
+  "/api/promos/claims",
+  route(async (req, res) =>
+    res.json(
+      await M.PromoCodeClaim.find({ user: req.user.id })
+        .populate("promo", "code")
+        .sort({ createdAt: -1 })
+        .limit(100),
+    ),
+  ),
+);
 function transactionFilter(q, user) {
   const f = user ? { user } : {};
   if (q.user) f.user = id(q.user);
