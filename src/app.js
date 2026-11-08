@@ -155,7 +155,8 @@ app.post(
         username: z
           .string()
           .regex(/^[a-zA-Z0-9_]{3,30}$/)
-          .transform((x) => x.toLowerCase()),
+          .transform((x) => x.toLowerCase())
+          .optional(),
         email: z
           .string()
           .email()
@@ -182,11 +183,14 @@ app.post(
         "An account with this email already exists. Please sign in instead.",
         409,
       );
+      const username =
+        b.username ||
+        `${b.name.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 20) || "user"}-${crypto.randomBytes(3).toString("hex")}`;
       const [u] = await M.User.create(
         [
           {
             name: b.name,
-            username: b.username,
+            username,
             email: b.email,
             password: pw,
             referralCode: crypto.randomBytes(6).toString("hex").toUpperCase(),
@@ -464,7 +468,10 @@ app.get(
     res.json({
       plan: PLAN,
       freePlan: FREE_PLAN,
-      purchases: await M.PlanPurchase.find({ user: req.user.id }),
+      purchases: await M.PlanPurchase.find({
+        user: req.user.id,
+        planType: "paid",
+      }),
       freePurchase: await M.PlanPurchase.findOne({
         user: req.user.id,
         planType: "free",
