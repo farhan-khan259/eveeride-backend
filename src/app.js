@@ -62,6 +62,7 @@ const id = (x) => {
   return x;
 };
 const page = (q) => Math.max(1, Math.min(10000, parseInt(q.page) || 1));
+const transactionPageSize = 10;
 const text = (x, min = 1, max = 500) =>
   z.string().trim().min(min).max(max).parse(x);
 const paymentsLive = () => {
@@ -1177,8 +1178,8 @@ app.get(
     res.json({
       items: await M.Transaction.find(f)
         .sort({ createdAt: -1 })
-        .skip((page(req.query) - 1) * 20)
-        .limit(20),
+        .skip((page(req.query) - 1) * transactionPageSize)
+        .limit(transactionPageSize),
       total: await M.Transaction.countDocuments(f),
       page: page(req.query),
     });
@@ -1863,8 +1864,8 @@ app.get(
     res.json({
       items: await M.Transaction.find(f)
         .sort({ createdAt: -1 })
-        .skip((page(req.query) - 1) * 20)
-        .limit(20),
+        .skip((page(req.query) - 1) * transactionPageSize)
+        .limit(transactionPageSize),
       total: await M.Transaction.countDocuments(f),
     });
   }),
