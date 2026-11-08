@@ -526,10 +526,16 @@ app.get(
           await M.TaskAssignment.findOne({
             purchase: p.id,
             day: dayKey(),
-          }).populate("task"),
+          })
+            .populate("task")
+            .populate("purchase", "planType"),
         );
       } else {
-        assignments.push(await latest.populate("task"));
+        await latest.populate([
+          { path: "task" },
+          { path: "purchase", select: "planType" },
+        ]);
+        assignments.push(latest);
       }
     }
     res.json(assignments.filter(Boolean));
