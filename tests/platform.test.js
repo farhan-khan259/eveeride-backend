@@ -466,6 +466,7 @@ test("payout account binding requires password; details are encrypted at rest", 
   assert.equal((await api().get("/payout-account")).body.number, b.number);
 });
 test("withdrawals enforce minimum and reserve only one pending amount", async () => {
+  await M.User.updateOne({ _id: u.id }, { $set: { "wallet.earned": 20000 } });
   assert.equal(
     (await api().post("/withdrawals", { amount: "99" })).status,
     400,
@@ -477,7 +478,7 @@ test("withdrawals enforce minimum and reserve only one pending amount", async ()
   assert.deepEqual(results.map((x) => x.status).sort(), [201, 400]);
   const saved = await M.User.findById(u.id);
   assert.equal(saved.wallet.pending, 10000);
-  assert.equal(saved.wallet.deposit, 37000);
+  assert.equal(saved.wallet.deposit, 47000);
   const adminView = await api(adminToken).get("/admin/withdrawals");
   assert.equal(adminView.status, 200, adminView.text);
   assert.equal(adminView.body[0].account.holder, "Test User");

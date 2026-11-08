@@ -101,10 +101,14 @@ export async function award(
   );
   return t;
 }
-export function take(wallet, amount, allowPromo = true) {
+export function take(wallet, amount, allowPromo = true, allowDeposit = true) {
   const out = { deposit: 0, earned: 0, promo: 0 };
   let left = amount;
-  for (const k of ["deposit", "earned", ...(allowPromo ? ["promo"] : [])]) {
+  for (const k of [
+    ...(allowDeposit ? ["deposit"] : []),
+    "earned",
+    ...(allowPromo ? ["promo"] : []),
+  ]) {
     out[k] = Math.min(wallet[k] || 0, left);
     left -= out[k];
   }

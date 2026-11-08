@@ -57,6 +57,16 @@ test("locked promotional balance cannot cover a funded purchase", () => {
     /Insufficient/,
   );
 });
+test("withdrawals never use the deposit bucket", () => {
+  assert.deepEqual(
+    take({ deposit: 51000, earned: 12500, promo: 2500 }, 15000, true, false),
+    { deposit: 0, earned: 12500, promo: 2500 },
+  );
+  assert.throws(
+    () => take({ deposit: 51000, earned: 12500, promo: 2500 }, 15001, true, false),
+    /Insufficient/,
+  );
+});
 test("insufficient balance is rejected without changing buckets", () => {
   const w = { deposit: 0, earned: 0, promo: 2000 };
   assert.throws(() => take(w, 3000), /Insufficient/);

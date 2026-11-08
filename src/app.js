@@ -439,9 +439,7 @@ async function snapshot(user) {
     depositBalance: u.wallet.deposit,
     totalEarnings: totalEarnings[0]?.amount || 0,
     withdrawable: active.length
-      ? u.wallet.deposit +
-        u.wallet.earned +
-        (u.promoUnlocked ? u.wallet.promo : 0)
+      ? u.wallet.earned + (u.promoUnlocked ? u.wallet.promo : 0)
       : 0,
     pending: u.wallet.pending,
     totals: Object.fromEntries(totals.map((x) => [x._id, x.amount])),
@@ -803,7 +801,7 @@ app.post(
       );
       const a = await M.PayoutAccount.findOne({ user: u.id }).session(s);
       ensure(a, "Bind a payout account first");
-      const cuts = take(u.wallet, amount, u.promoUnlocked);
+      const cuts = take(u.wallet, amount, u.promoUnlocked, false);
       for (const k of Object.keys(cuts)) u.wallet[k] -= cuts[k];
       u.wallet.pending += amount;
       await u.save({ session: s });
