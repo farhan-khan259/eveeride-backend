@@ -464,6 +464,13 @@ test("payout account binding requires password; details are encrypted at rest", 
   const saved = await M.PayoutAccount.findOne({ user: u.id });
   assert.ok(!saved.cipher.includes(b.number));
   assert.equal((await api().get("/payout-account")).body.number, b.number);
+  const changed = await api().put("/payout-account", {
+    ...b,
+    number: "03111111111",
+  });
+  assert.equal(changed.status, 409);
+  assert.match(changed.body.message, /permanently bound/i);
+  assert.equal((await api().get("/payout-account")).body.number, b.number);
 });
 test("withdrawals enforce minimum and reserve only one pending amount", async () => {
   await M.User.updateOne({ _id: u.id }, { $set: { "wallet.earned": 20000 } });

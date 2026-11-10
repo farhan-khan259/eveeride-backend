@@ -2,8 +2,6 @@
 node_modules/
 
 # Runtime secrets
-.env
-.env.*
 !.env.example
 
 # Runtime data and uploads
@@ -22,5 +20,5 @@ pnpm-debug.log*
 # Local editor and OS files
 .DS_Store
 .idea/
-.vscode/
 *.swp
+config.bat

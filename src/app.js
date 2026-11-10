@@ -818,25 +818,22 @@ app.put(
     );
     delete b.password;
     await atomic(async (s) => {
+      ensure(
+        !(await M.PayoutAccount.exists({ user: u.id }).session(s)),
+        "Your payout account is permanently bound and cannot be changed",
+        409,
+      );
       await M.User.updateOne(
         { _id: u.id },
         { $inc: { sessionVersion: 0 } },
         { session: s },
       );
-      ensure(
-        !(await M.Withdrawal.exists({
-          user: u.id,
-          status: "pending",
-        }).session(s)),
-        "Cannot change the payout account while a withdrawal is pending",
-      );
-      await M.PayoutAccount.updateOne(
-        { user: u.id },
-        { $set: { cipher: seal(b) } },
-        { upsert: true, session: s },
+      await M.PayoutAccount.create(
+        [{ user: u.id, cipher: seal(b) }],
+        { session: s },
       );
     });
-    res.json({ message: "Payout account saved" });
+    res.json({ message: "Payout account permanently bound" });
   }),
 );
 app.post(
