@@ -3,7 +3,7 @@ node_modules/
 
 # Runtime secrets
 !.env.example
-
+.env
 # Runtime data and uploads
 uploads/
 *.pid
