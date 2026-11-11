@@ -697,13 +697,14 @@ test("manual adjustments are funded, idempotent, nonnegative and audited", async
   });
   assert.equal(r.status, 409);
 });
-test("account deletion is protected, requires zero balance and preserves audit history", async () => {
+test("confirmed account deletion preserves balances and audit history", async () => {
   const deletable = await M.User.create({
     name: "Delete Test",
     username: "delete-test",
     email: "delete-test@example.test",
     password: await bcrypt.hash("DeleteSecure123", 4),
     referralCode: "DELETETEST",
+    wallet: { deposit: 12345 },
   });
   let r = await request(app)
     .delete(`/api/admin/users/${deletable.id}`)
@@ -712,6 +713,7 @@ test("account deletion is protected, requires zero balance and preserves audit h
   assert.equal(r.status, 200, r.text);
   const deleted = await M.User.findById(deletable.id);
   assert.equal(deleted.status, "deleted");
+  assert.equal(deleted.wallet.deposit, 12345);
   assert.match(deleted.email, /@deleted\.invalid$/);
   assert.equal(
     await M.AdminAuditLog.countDocuments({

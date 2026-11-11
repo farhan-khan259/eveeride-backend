@@ -235,6 +235,7 @@ app.post(
   }),
 );
 function publicUser(u) {
+  const registeredAt = u.createdAt || u._id?.getTimestamp?.();
   return {
     id: u.id,
     name: u.name,
@@ -245,6 +246,7 @@ function publicUser(u) {
     referralCode: u.referralCode,
     wallet: u.wallet,
     purchases: u.purchases,
+    createdAt: registeredAt,
     avatarVersion: u.avatar ? u.updatedAt : null,
   };
 }
@@ -1491,23 +1493,6 @@ app.delete(
       const u = await M.User.findById(id(req.params.id)).session(s);
       ensure(u && u.role !== "admin", "Cannot delete this account");
       ensure(u.status !== "deleted", "Account is already deleted", 409);
-      const balance = Object.values(u.wallet || {}).reduce(
-        (total, amount) => total + (amount || 0),
-        0,
-      );
-      ensure(balance === 0, "Remove the account balance before deletion", 409);
-      ensure(
-        !(await M.Deposit.exists({
-          user: u.id,
-          status: { $in: ["awaiting", "pending"] },
-        }).session(s)) &&
-          !(await M.Withdrawal.exists({
-            user: u.id,
-            status: "pending",
-          }).session(s)),
-        "Resolve open payment requests before deletion",
-        409,
-      );
       const before = {
         name: u.name,
         username: u.username,
