@@ -54,7 +54,12 @@ app.disable("x-powered-by");
 app.use(helmet());
 app.use(cors({ origin: cfg.origins }));
 app.use(express.json({ limit: "64kb" }));
-app.use(rateLimit({ windowMs: 60000, limit: 180 }));
+const apiLimit = rateLimit({ windowMs: 60000, limit: 180 });
+app.use((req, res, next) => {
+  if (req.path === "/api/auth/login" || req.path === "/api/auth/register")
+    return next();
+  return apiLimit(req, res, next);
+});
 const route = (fn) => (req, res, next) =>
   Promise.resolve(fn(req, res)).catch(next);
 const id = (x) => {
@@ -142,18 +147,18 @@ app.get(
     }),
   ),
 );
-const loginLimit = rateLimit({
+// Apply a separate limit to password recovery endpoints only.
+const authActionLimit = rateLimit({
   windowMs: 15 * 60000,
-  limit: 20,
+  limit: 60,
   skipSuccessfulRequests: true,
   handler: (_req, res) =>
     res.status(429).json({
-      message: "Too many sign-in attempts. Please wait a few minutes and try again.",
+      message: "Too many requests. Please wait a few minutes and try again.",
     }),
 });
 app.post(
   "/api/auth/register",
-  loginLimit,
   route(async (req, res) => {
     const b = z
       .object({
@@ -252,7 +257,6 @@ function publicUser(u) {
 }
 app.post(
   "/api/auth/login",
-  loginLimit,
   route(async (req, res) => {
     const email = text(req.body.email, 3, 254).toLowerCase(),
       pw = text(req.body.password, 1, 100);
@@ -268,7 +272,7 @@ app.post(
 );
 app.post(
   "/api/auth/forgot",
-  loginLimit,
+  authActionLimit,
   route(async (req, res) => {
     const email = z.string().email().parse(req.body.email).toLowerCase(),
       otp = String(crypto.randomInt(100000, 1000000));
@@ -305,7 +309,7 @@ app.post(
 );
 app.post(
   "/api/auth/reset",
-  loginLimit,
+  authActionLimit,
   route(async (req, res) => {
     const body = z
         .object({
@@ -377,7 +381,6 @@ app.post(
 );
 app.post(
   "/api/account/password",
-  loginLimit,
   route(async (req, res) => {
     const body = z
       .object({
@@ -797,7 +800,6 @@ app.get(
 );
 app.put(
   "/api/payout-account",
-  loginLimit,
   route(async (req, res) => {
     const b = z
       .object({
