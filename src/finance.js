@@ -193,12 +193,12 @@ export async function ensureSalaryCycle(user, session, now = new Date()) {
 export async function recordSalaryDeposit(user, amount, session) {
   const source = await M.User.findById(user).session(session);
   ensure(source, "User not found", 404);
-  for (const ancestor of source.ancestors) {
-    const cycle = await ensureSalaryCycle(ancestor, session);
-    cycle.total += amount;
-    cycle.qualifiedLevels = qualifiedSalaryLevels(cycle.total);
-    await cycle.save({ session });
-  }
+  const directAncestor = source.ancestors[0];
+  if (!directAncestor) return;
+  const cycle = await ensureSalaryCycle(directAncestor, session);
+  cycle.total += amount;
+  cycle.qualifiedLevels = qualifiedSalaryLevels(cycle.total);
+  await cycle.save({ session });
 }
 export async function purchase(user, requestKey) {
   ensure(
