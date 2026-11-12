@@ -346,7 +346,13 @@ export async function recordRevenue(admin, user, amount, externalRef, reason) {
     return r;
   });
 }
-export async function recordDepositCommissions(user, amount, event, session) {
+export async function recordDepositCommissions(
+  user,
+  amount,
+  event,
+  session,
+  activeAt = new Date(),
+) {
   const source = await M.User.findById(user).session(session);
   ensure(source, "User not found", 404);
   const policy = await config(
@@ -361,7 +367,16 @@ export async function recordDepositCommissions(user, amount, event, session) {
     const commission = Math.floor(
       (amount * DEPOSIT_COMMISSION_RATES[i]) / 100,
     );
-    if (!commission || !(await activePlan(ancestor, session))) continue;
+    if (
+      !commission ||
+      !(await activePlan(ancestor, session, activeAt)) ||
+      (await M.Commission.exists({
+        user: ancestor,
+        event: String(event),
+        kind: "deposit",
+      }).session(session))
+    )
+      continue;
     await award(
       ancestor,
       commission,
