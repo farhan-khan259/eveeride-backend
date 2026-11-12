@@ -26,7 +26,6 @@ try {
         deposit.amount,
         deposit._id,
         session,
-        deposit.decided || deposit.updatedAt || deposit.createdAt,
       );
       const after = await M.Commission.countDocuments({
         event: String(deposit._id),
@@ -43,7 +42,7 @@ try {
       admin.id,
       null,
       "backfill_deposit_commissions",
-      "Reconciled missing commissions using deposit approval-time eligibility",
+      "Reconciled missing commissions for all approved deposits by referral level",
       null,
       { depositsProcessed: processed, commissionsCredited: credited },
       "approved-deposit-commission-backfill",

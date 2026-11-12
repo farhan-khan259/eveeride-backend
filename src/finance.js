@@ -351,7 +351,6 @@ export async function recordDepositCommissions(
   amount,
   event,
   session,
-  activeAt = new Date(),
 ) {
   const source = await M.User.findById(user).session(session);
   ensure(source, "User not found", 404);
@@ -369,7 +368,6 @@ export async function recordDepositCommissions(
     );
     if (
       !commission ||
-      !(await activePlan(ancestor, session, activeAt)) ||
       (await M.Commission.exists({
         user: ancestor,
         event: String(event),
