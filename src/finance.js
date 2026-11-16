@@ -218,7 +218,7 @@ export async function purchase(user, requestKey) {
       planType: "paid",
     }).session(s);
     ensure(
-      paidPurchases < 3,
+      paidPurchases < PLAN.maxPurchases,
       "Your maximum plan purchase limit has been reached",
       409,
     );
@@ -262,7 +262,7 @@ export async function purchase(user, requestKey) {
       `purchase:${p.id}`,
       "plan_purchase",
       -PLAN.price,
-      "Starter Plan activated",
+      "EveeRide Scube Journey — Plan 2 activated",
       [
         ...Object.entries(cuts)
           .filter(([, n]) => n)

@@ -427,23 +427,27 @@ test("duplicate deposit TID cannot be submitted again", async () => {
     });
   assert.equal(result.status, 409, result.text);
 });
-test("Starter purchases enforce three lifetime purchases atomically", async () => {
+test("Plan 2 purchases enforce two lifetime purchases atomically", async () => {
   await M.ApplicationConfiguration.updateOne(
     { key: "rewardFund" },
     { $set: { "value.available": 0 } },
   );
-  for (let i = 0; i < 3; i++) {
+  await M.User.updateOne(
+    { _id: u.id },
+    { $set: { "wallet.deposit": 300000 } },
+  );
+  for (let i = 0; i < 2; i++) {
     const r = await api().post("/plans/purchase", {
       requestId: crypto.randomUUID(),
     });
     assert.equal(r.status, 201, r.text);
   }
-  const fourth = await api().post("/plans/purchase", {
+  const third = await api().post("/plans/purchase", {
     requestId: crypto.randomUUID(),
   });
-  assert.equal(fourth.status, 409, fourth.text);
-  assert.equal(await M.PlanPurchase.countDocuments({ user: u.id }), 3);
-  assert.equal((await M.User.findById(u.id)).wallet.deposit, 47000);
+  assert.equal(third.status, 409, third.text);
+  assert.equal(await M.PlanPurchase.countDocuments({ user: u.id }), 2);
+  assert.equal((await M.User.findById(u.id)).wallet.deposit, 96000);
   assert.equal((await M.User.findById(u.id)).promoUnlocked, true);
   await M.ApplicationConfiguration.updateOne(
     { key: "rewardFund" },
@@ -485,7 +489,7 @@ test("withdrawals enforce minimum and reserve only one pending amount", async ()
   assert.deepEqual(results.map((x) => x.status).sort(), [201, 400]);
   const saved = await M.User.findById(u.id);
   assert.equal(saved.wallet.pending, 10000);
-  assert.equal(saved.wallet.deposit, 47000);
+  assert.equal(saved.wallet.deposit, 96000);
   const adminView = await api(adminToken).get("/admin/withdrawals");
   assert.equal(adminView.status, 200, adminView.text);
   assert.equal(adminView.body[0].account.holder, "Test User");
@@ -501,7 +505,7 @@ test("withdrawal rejection restores the exact reserved funds once", async () => 
   assert.equal(r.status, 200, r.text);
   const saved = await M.User.findById(u.id);
   assert.equal(saved.wallet.pending, 0);
-  assert.equal(saved.wallet.deposit, 47000);
+  assert.equal(saved.wallet.deposit, 96000);
   r = await api(adminToken).post(`/admin/withdrawals/${w.id}/decision`, {
     status: "rejected",
     reason: "Test duplicate rejection",
@@ -544,7 +548,7 @@ test("task completion enforces server duration and exactly one reward", async ()
   });
   let r = await api().get("/tasks");
   assert.equal(r.status, 200, r.text);
-  assert.equal(r.body.length, 3);
+  assert.equal(r.body.length, 2);
   const id = r.body[0]._id;
   assert.equal((await api().post(`/tasks/${id}/complete`, {})).status, 400);
   assert.equal((await api().post(`/tasks/${id}/start`, {})).status, 200);
@@ -559,7 +563,7 @@ test("task completion enforces server duration and exactly one reward", async ()
   ]);
   assert.deepEqual(result.map((x) => x.status).sort(), [200, 409]);
   assert.equal(await M.Transaction.countDocuments({ key: `task:${id}` }), 1);
-  assert.equal((await M.User.findById(u.id)).wallet.earned, 3400);
+  assert.equal((await M.User.findById(u.id)).wallet.earned, 8000);
   r = await api().get("/tasks");
   const completed = r.body.find((task) => task._id === id);
   assert.ok(completed.completed);

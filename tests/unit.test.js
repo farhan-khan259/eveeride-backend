@@ -118,13 +118,13 @@ test("ledger and audits reject query mutation before any database operation", as
   );
   await assert.rejects(() => M.AdminAuditLog.deleteMany({}), /append only/);
 });
-test("fixed plan and ten one-time levels preserve requested amounts", () => {
-  assert.equal(PLAN.reward, 3400);
+test("Plan 2 and ten one-time levels preserve requested amounts", () => {
+  assert.equal(PLAN.reward, 8000);
   assert.equal(PLAN.dailyTasks, 1);
   assert.equal(PLAN.days, 35);
-  assert.equal(PLAN.reward * PLAN.dailyTasks * PLAN.days, 119000);
-  assert.equal(PLAN.price, 51000);
-  assert.equal(PLAN.maxPurchases, 3);
+  assert.equal(PLAN.reward * PLAN.dailyTasks * PLAN.days, 280000);
+  assert.equal(PLAN.price, 102000);
+  assert.equal(PLAN.maxPurchases, 2);
   assert.deepEqual(LEVELS, [
     [1000000, 50000],
     [2000000, 80000],
