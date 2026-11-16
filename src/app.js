@@ -33,6 +33,8 @@ import {
   unseal,
   hash,
 } from "./security.js";
+
+const DEPOSIT_METHODS = ["EasyPaisa"];
 import {
   atomic,
   config,
@@ -719,7 +721,9 @@ app.get(
     const methods = await config("payments", {});
     res.json({
       methods: Object.fromEntries(
-        Object.entries(methods).filter(([, v]) => v.enabled),
+        Object.entries(methods).filter(
+          ([method, v]) => DEPOSIT_METHODS.includes(method) && v.enabled,
+        ),
       ),
       hoursOpen: hoursOpen(),
       serverTime: new Date(),
@@ -733,7 +737,7 @@ app.post(
     paymentsLive();
     const amount = money(req.body.amount),
       method = z
-        .enum(["EasyPaisa", "JazzCash", "Mashreq"])
+        .enum(DEPOSIT_METHODS)
         .parse(req.body.method);
     ensure(amount >= 51000, "Minimum deposit is Rs 510");
     const methods = await config("payments", {}),
@@ -1776,7 +1780,7 @@ app.put(
   route(async (req, res) => {
     const val = z
       .record(
-        z.enum(["EasyPaisa", "JazzCash", "Mashreq"]),
+        z.enum(DEPOSIT_METHODS),
         z.object({
           title: z.string().max(100),
           number: z.string().max(60),
