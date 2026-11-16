@@ -16,15 +16,26 @@ export const cfg = {
     process.env.BUSINESS_NAME || "Business identity pending configuration",
 };
 export const PLAN = {
-  name: "EveeRide Scube Journey — Plan 2",
+  id: "plan1",
+  name: "EVEERIDE — STARTER PLAN",
+  price: 51000,
+  reward: 3400,
+  dailyTasks: 1,
+  days: 35,
+  maxPurchases: 3,
+};
+export const PLAN_2 = {
+  id: "plan2",
+  name: "EVEERIDE — SCUBE JOURNEY",
   price: 102000,
   reward: 8000,
   dailyTasks: 1,
   days: 35,
   maxPurchases: 2,
 };
+export const PAID_PLANS = [PLAN, PLAN_2];
 export const FREE_PLAN = {
-  name: "EveeRide FREE PLAN",
+  name: "EVEERIDE — FREE PLAN",
   price: 0,
   reward: 500,
   dailyTasks: 1,

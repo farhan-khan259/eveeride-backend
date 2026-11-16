@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import * as M from "./models.js";
 import {
   ensure,
-  PLAN,
+  PLAN, PAID_PLANS,
   FREE_PLAN,
   LEVELS,
   DEPOSIT_COMMISSION_RATES,
@@ -200,29 +200,38 @@ export async function recordSalaryDeposit(user, amount, session) {
   cycle.qualifiedLevels = qualifiedSalaryLevels(cycle.total);
   await cycle.save({ session });
 }
-export async function purchase(user, requestKey) {
+export async function purchase(user, requestKey, planId = "plan1") {
   ensure(
     typeof requestKey === "string" &&
       requestKey.length >= 8 &&
       requestKey.length <= 100,
     "A valid purchase request ID is required",
   );
+  const plan = PAID_PLANS.find((item) => item.id === planId);
+  ensure(plan, "Invalid plan selected");
   return atomic(async (s) => {
     const existing = await M.PlanPurchase.findOne({ user, requestKey }).session(
       s,
     );
     if (existing) return existing;
     const u = await M.User.findById(user).session(s);
-    const paidPurchases = await M.PlanPurchase.countDocuments({
+    const totalPaidPurchases = await M.PlanPurchase.countDocuments({
       user,
       planType: "paid",
     }).session(s);
+    const planPurchases = await M.PlanPurchase.countDocuments({
+      user,
+      planType: "paid",
+      ...(plan.id === "plan1"
+        ? { $or: [{ planId: "plan1" }, { planId: { $exists: false } }] }
+        : { planId: plan.id }),
+    }).session(s);
     ensure(
-      paidPurchases < PLAN.maxPurchases,
+      planPurchases < plan.maxPurchases,
       "Your maximum plan purchase limit has been reached",
       409,
     );
-    const cuts = take(u.wallet, PLAN.price, false);
+    const cuts = take(u.wallet, plan.price, false);
     if (!u.promoUnlocked) {
       await ledger(
         user,
@@ -239,18 +248,19 @@ export async function purchase(user, requestKey) {
       u.promoUnlocked = true;
     }
     for (const k of Object.keys(cuts)) u.wallet[k] -= cuts[k];
-    u.purchases = paidPurchases + 1;
+    u.purchases = totalPaidPurchases + 1;
     await u.save({ session: s });
     const now = new Date();
     const [p] = await M.PlanPurchase.create(
       [
         {
           user,
-          name: PLAN.name,
-          price: PLAN.price,
-          reward: PLAN.reward,
+          name: plan.name,
+          price: plan.price,
+          reward: plan.reward,
+          planId: plan.id,
           start: now,
-          expires: new Date(+now + PLAN.days * 86400000),
+          expires: new Date(+now + plan.days * 86400000),
           sequence: u.purchases,
           requestKey,
         },
@@ -261,13 +271,13 @@ export async function purchase(user, requestKey) {
       user,
       `purchase:${p.id}`,
       "plan_purchase",
-      -PLAN.price,
-      "EveeRide Scube Journey — Plan 2 activated",
+      -plan.price,
+      `${plan.name} activated`,
       [
         ...Object.entries(cuts)
           .filter(([, n]) => n)
           .map(([k, n]) => ({ account: `${user}:${k}`, amount: -n })),
-        { account: "planReceipts", amount: PLAN.price },
+        { account: "planReceipts", amount: plan.price },
       ],
       s,
       p.id,

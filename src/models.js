@@ -63,6 +63,7 @@ export const PlanPurchase = model(
     price: minor,
     reward: minor,
     planType: { type: String, enum: ["paid", "free"], default: "paid" },
+    planId: { type: String, enum: ["plan1", "plan2"], default: "plan1" },
     start: Date,
     expires: Date,
     sequence: Number,

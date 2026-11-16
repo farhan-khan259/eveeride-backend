@@ -13,7 +13,7 @@ import {
   cfg,
   ensure,
   Fault,
-  PLAN,
+  PLAN, PAID_PLANS,
   FREE_PLAN,
   LEVELS,
   DEPOSIT_COMMISSION_RATES,
@@ -132,6 +132,7 @@ app.get(
   route(async (_req, res) =>
     res.json({
       plan: PLAN,
+      plans: PAID_PLANS,
       levels: LEVELS,
       serverTime: new Date(),
       hoursOpen: hoursOpen(),
@@ -494,7 +495,7 @@ app.get(
 app.post(
   "/api/plans/purchase",
   route(async (req, res) =>
-    res.status(201).json(await purchase(req.user.id, req.body.requestId)),
+    res.status(201).json(await purchase(req.user.id, req.body.requestId, req.body.planId)),
   ),
 );
 app.post(
