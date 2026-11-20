@@ -72,7 +72,7 @@ before(
       key: "payments",
       value: {
         EasyPaisa: {
-          title: "TEST ACCOUNT ONLY",
+          title: "OLD TEST ACCOUNT",
           number: "03000000000",
           enabled: true,
         },
@@ -108,7 +108,7 @@ test("admin dashboard charts return seven days of database activity", async () =
     M.Deposit.create({
       user: chartUser.id,
       amount: 125000,
-      method: "EasyPaisa",
+      method: "Mashreq",
       tid: "CHART-DEPOSIT",
       status: "approved",
     }),
@@ -184,14 +184,14 @@ test("team members include each member's approved deposit total", async () => {
   await M.Deposit.create({
     user: second.id,
     amount: 12345,
-    method: "EasyPaisa",
+    method: "Mashreq",
     tid: "TEAM-MEMBER-DEPOSIT",
     status: "approved",
   });
   await M.Deposit.create({
     user: second.id,
     amount: 5000,
-    method: "EasyPaisa",
+    method: "Mashreq",
     tid: "TEAM-MEMBER-PENDING",
     status: "pending",
   });
@@ -365,10 +365,27 @@ test("registration bonus is nonwithdrawable and active paid plan is mandatory", 
   );
 });
 test("deposits reject amounts below 510 and remain pending until approval", async () => {
+  const methods = await api().get("/payments");
+  assert.deepEqual(Object.keys(methods.body.methods), ["Mashreq"]);
+  assert.deepEqual(methods.body.methods.Mashreq, {
+    title: "Muhammad Farhan",
+    number: "089010006045",
+    bank: "Mashreq Bank",
+    enabled: true,
+  });
   assert.equal(
     (
       await api().post("/deposits/order", {
         amount: "509",
+        method: "Mashreq",
+      })
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await api().post("/deposits/order", {
+        amount: "2000",
         method: "EasyPaisa",
       })
     ).status,
@@ -376,7 +393,7 @@ test("deposits reject amounts below 510 and remain pending until approval", asyn
   );
   const r = await api().post("/deposits/order", {
     amount: "2000",
-    method: "EasyPaisa",
+    method: "Mashreq",
   });
   assert.equal(r.status, 201, r.text);
   const png = Buffer.from("89504e470d0a1a0a00000000", "hex");
@@ -415,7 +432,7 @@ test("deposit approval credits once under competing requests and is audited", as
 test("duplicate deposit TID cannot be submitted again", async () => {
   const r = await api().post("/deposits/order", {
     amount: "510",
-    method: "EasyPaisa",
+    method: "Mashreq",
   });
   const result = await request(app)
     .post(`/api/deposits/${r.body.order._id}/submit`)
@@ -627,7 +644,7 @@ test("salary uses a common ten-day cycle and only new approved deposits advance 
   const deposit = await M.Deposit.create({
     user: second.id,
     amount: 1000000,
-    method: "EasyPaisa",
+    method: "Mashreq",
     tid: "SALARY-CYCLE-DEPOSIT",
     status: "pending",
   });

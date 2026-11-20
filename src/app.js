@@ -34,7 +34,24 @@ import {
   hash,
 } from "./security.js";
 
-const DEPOSIT_METHODS = ["EasyPaisa"];
+const DEPOSIT_METHODS = ["Mashreq"];
+const DEFAULT_PAYMENT_ACCOUNTS = {
+  Mashreq: {
+    title: "Muhammad Farhan",
+    number: "089010006045",
+    bank: "Mashreq Bank",
+    enabled: true,
+  },
+};
+async function depositPaymentAccounts(session) {
+  const configured = await config("payments", {}, session);
+  return Object.fromEntries(
+    DEPOSIT_METHODS.map((method) => [
+      method,
+      configured[method] ?? DEFAULT_PAYMENT_ACCOUNTS[method],
+    ]),
+  );
+}
 import {
   atomic,
   config,
@@ -718,7 +735,7 @@ app.get(
 app.get(
   "/api/payments",
   route(async (_req, res) => {
-    const methods = await config("payments", {});
+    const methods = await depositPaymentAccounts();
     res.json({
       methods: Object.fromEntries(
         Object.entries(methods).filter(
@@ -740,7 +757,7 @@ app.post(
         .enum(DEPOSIT_METHODS)
         .parse(req.body.method);
     ensure(amount >= 51000, "Minimum deposit is Rs 510");
-    const methods = await config("payments", {}),
+    const methods = await depositPaymentAccounts(),
       account = methods[method];
     ensure(
       account?.enabled && account.title && account.number,
@@ -1773,7 +1790,7 @@ app.get(
 );
 app.get(
   "/api/admin/payments",
-  route(async (_req, res) => res.json(await config("payments", {}))),
+  route(async (_req, res) => res.json(await depositPaymentAccounts())),
 );
 app.put(
   "/api/admin/payments",
